@@ -1,5 +1,5 @@
 use clap::{App, Arg};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -44,6 +44,8 @@ fn main() -> std::io::Result<()> {
 
     let mut doubles = 0;
     let mut triples = 0;
+
+    let mut seen_minus_char: HashMap<String, HashSet<String>> = HashMap::new();
     for (_i, line) in buf_reader.lines().enumerate() {
         let s = line?;
         let (double, triple) = find_multiples(s.trim());
@@ -52,6 +54,20 @@ fn main() -> std::io::Result<()> {
         }
         if triple {
             triples += 1
+        }
+
+        for ix in 0..s.len() {
+            let mut buf = String::new();
+            buf.push_str(&s[..ix]);
+            buf.push_str(&s[ix + 1..]);
+
+            let entry = seen_minus_char.entry(buf);
+            let value = entry.or_default();
+            value.insert(s.clone());
+
+            if value.len() >= 2 {
+                println!("Found: {}{}", &s[..ix], &s[ix + 1..]);
+            }
         }
     }
 
