@@ -1,0 +1,66 @@
+use clap::{App, Arg};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
+
+enum Multiples {
+    None,
+    Two,
+    Three,
+}
+
+fn find_multiples(s: &str) -> Multiples {
+    let mut counts: HashMap<char, i8> = HashMap::new();
+    let mut value = Multiples::None;
+    for c in s.chars() {
+        let v = counts.entry(c).or_insert(0);
+        *v += 1;
+        match *v {
+            3 => {
+                return Multiples::Three;
+            }
+            2 => {
+                value = Multiples::Two;
+            }
+            _ => {}
+        }
+    }
+
+    return value;
+}
+
+fn main() -> std::io::Result<()> {
+    let matches = App::new("My Super Program")
+        .arg(
+            Arg::with_name("input")
+                .short("i")
+                .long("input")
+                .value_name("INPUT")
+                .takes_value(true),
+        )
+        .get_matches();
+
+    let input_path = matches.value_of("INPUT").unwrap_or("inputs/day2.txt");
+
+    eprintln!("Using input {}", input_path);
+
+    let file = File::open(input_path)?;
+    let buf_reader = BufReader::new(file);
+
+    let mut doubles = 0;
+    let mut triples = 0;
+    for (_i, line) in buf_reader.lines().enumerate() {
+        let s = line?;
+        let mul = find_multiples(s.trim());
+        match mul {
+            Multiples::Three => triples += 1,
+            Multiples::Two => doubles += 1,
+            Multiples::None => {}
+        }
+    }
+
+    println!("Checksum: {}", doubles * triples);
+
+    Ok(())
+}
