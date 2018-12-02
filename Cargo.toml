@@ -8,3 +8,4 @@ name = "day1"
 path = "src/day1/main.rs"
 
 [dependencies]
+clap = "2.32"
