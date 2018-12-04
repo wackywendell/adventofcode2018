@@ -5,7 +5,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 
 fn main() -> std::io::Result<()> {
-    let matches = App::new("My Super Program")
+    let matches = App::new("Day 1")
         .arg(
             Arg::with_name("input")
                 .short("i")

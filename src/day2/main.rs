@@ -25,7 +25,7 @@ fn find_multiples(s: &str) -> (bool, bool) {
 }
 
 fn main() -> std::io::Result<()> {
-    let matches = App::new("My Super Program")
+    let matches = App::new("Day 2")
         .arg(
             Arg::with_name("input")
                 .short("i")
