@@ -9,9 +9,9 @@ struct Chemical {
 
 impl Default for Chemical {
     fn default() -> Self {
-        return Chemical {
+        Chemical {
             units: Default::default(),
-        };
+        }
     }
 }
 
@@ -47,7 +47,7 @@ impl Chemical {
         let mut chem = Chemical::new();
 
         chem.react(chars.into_iter().filter(|l| l.to_ascii_lowercase() != c));
-        return chem;
+        chem
     }
 
     fn find_shortest_drop<S: AsRef<str>>(chars: S) -> (char, Self) {
@@ -56,7 +56,7 @@ impl Chemical {
         let z: &mut [u8] = &mut [0; 1];
         'z'.encode_utf8(z);
 
-        let inputs = (a[0]..z[0]).map(|b| char::from(b));
+        let inputs = (a[0]..z[0]).map(char::from);
 
         let mut shortest = None;
         for c in inputs {
@@ -70,7 +70,7 @@ impl Chemical {
             }
         }
 
-        return shortest.unwrap();
+        shortest.unwrap()
     }
 }
 

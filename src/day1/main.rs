@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 use clap::{App, Arg};
 use std::collections::HashSet;
 use std::fs::File;

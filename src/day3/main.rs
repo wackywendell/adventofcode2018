@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -23,7 +25,7 @@ impl<'a, S: AsRef<str>> FromIterator<S> for Claims {
         for l in iter {
             c.add_claim(Claim::from_line(l.as_ref()));
         }
-        return c;
+        c
     }
 }
 
@@ -63,7 +65,7 @@ impl Claims {
     }
 
     fn overlap_area(&self) -> i64 {
-        return self.overlaps.iter().map(|o| o.area()).sum();
+        self.overlaps.iter().map(|o| o.area()).sum()
     }
 }
 
@@ -88,15 +90,15 @@ impl fmt::Display for Rectangle {
 impl Rectangle {
     fn new(left: i16, right: i16, top: i16, bottom: i16) -> Rectangle {
         Rectangle {
-            left: left,
-            right: right,
-            top: top,
-            bottom: bottom,
+            left,
+            right,
+            top,
+            bottom,
         }
     }
 
     fn area(self) -> i64 {
-        return ((self.right - self.left) as i64) * ((self.bottom - self.top) as i64);
+        i64::from(self.right - self.left) * i64::from(self.bottom - self.top)
     }
 
     fn overlap(self, other: Rectangle) -> Option<Rectangle> {
@@ -111,7 +113,7 @@ impl Rectangle {
             return None;
         }
 
-        return Some(Rectangle::new(left, right, top, bottom));
+        Some(Rectangle::new(left, right, top, bottom))
     }
 
     fn difference(self, other: Rectangle) -> Vec<Rectangle> {
@@ -146,7 +148,7 @@ impl Rectangle {
             }
         }
 
-        return v;
+        v
     }
 }
 
@@ -157,16 +159,17 @@ struct Claim {
 }
 
 impl Claim {
-    fn from_line(s: &str) -> Claim {
+    fn from_line(line: &str) -> Claim {
         lazy_static! {
             static ref re: regex::Regex =
                 regex::Regex::new(r"^#(\d+) @ (\d+),(\d+): (\d+)x(\d+)$").unwrap();
         }
 
-        let c = re.captures(s).expect("Match not found");
+        let captures = re.captures(line).expect("Match not found");
 
         let parse = |i: usize| -> i16 {
-            c.get(i)
+            captures
+                .get(i)
                 .expect("Group 1 not found")
                 .as_str()
                 .parse()
@@ -180,7 +183,7 @@ impl Claim {
         let h = parse(5);
 
         Claim {
-            id: id,
+            id,
             rect: Rectangle {
                 top: y,
                 bottom: y + h,

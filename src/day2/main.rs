@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 use clap::{App, Arg};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -21,7 +23,7 @@ fn find_multiples(s: &str) -> (bool, bool) {
         }
     }
 
-    return (doubles, triples);
+    (doubles, triples)
 }
 
 fn main() -> std::io::Result<()> {

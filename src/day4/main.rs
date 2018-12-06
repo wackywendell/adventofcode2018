@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -148,7 +150,7 @@ impl<'a> IntoIterator for &'a Log {
 }
 
 struct Shift {
-    start: NaiveDateTime,
+    _start: NaiveDateTime,
     guard: u16,
     naps: Vec<(NaiveDateTime, NaiveDateTime)>,
 }
@@ -156,7 +158,7 @@ struct Shift {
 impl Shift {
     fn new(guard: u16, start: NaiveDateTime) -> Shift {
         return Shift {
-            start: start,
+            _start: start,
             guard: guard,
             naps: vec![],
         };
