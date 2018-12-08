@@ -25,8 +25,8 @@ struct Date {
 
 impl Into<NaiveDateTime> for Date {
     fn into(self) -> NaiveDateTime {
-        let date = NaiveDate::from_ymd(self.year as i32, self.month as u32, self.day as u32);
-        let time = NaiveTime::from_hms(self.hour as u32, self.minute as u32, 0);
+        let date = NaiveDate::from_ymd(self.year.into(), self.month.into(), self.day.into());
+        let time = NaiveTime::from_hms(self.hour.into(), self.minute.into(), 0);
 
         NaiveDateTime::new(date, time)
     }
@@ -96,10 +96,10 @@ impl FromStr for LogLine {
 
         let to_u16 = |i: usize, c: &regex::Captures| -> u16 {
             c.get(i)
-                .expect(&format!("Group {} not found", i))
+                .unwrap_or_else(|| panic!("Group {} not found", i))
                 .as_str()
                 .parse()
-                .expect(&format!("Couldn't parse group {}", i))
+                .unwrap_or_else(|_| panic!("Couldn't parse group {}", i))
         };
 
         let to_date = |c: &regex::Captures| -> Date {
@@ -145,7 +145,7 @@ impl<'a> IntoIterator for &'a Log {
     type IntoIter = ::std::slice::Iter<'a, LogLine>;
 
     fn into_iter(self) -> Self::IntoIter {
-        return (&self.lines).into_iter();
+        (&self.lines).iter()
     }
 }
 
@@ -157,11 +157,11 @@ struct Shift {
 
 impl Shift {
     fn new(guard: u16, start: NaiveDateTime) -> Shift {
-        return Shift {
+        Shift {
             _start: start,
             guard: guard,
             naps: vec![],
-        };
+        }
     }
 }
 
@@ -172,7 +172,7 @@ impl std::ops::Deref for Shifts {
 
     fn deref(&self) -> &[Shift] {
         let Shifts(ref v) = self;
-        return v.deref();
+        v.deref()
     }
 }
 
@@ -190,7 +190,7 @@ impl Shifts {
             }
         }
 
-        return m;
+        m
     }
 
     fn max_guard_time(&self) -> (u16, u32, u8) {
@@ -207,7 +207,7 @@ impl Shifts {
                 if kc > v[max_min] {
                     max_min = ix;
                 }
-                total += kc as u32;
+                total += u32::from(kc);
             }
             if total >= max_guard_total {
                 max_guard = k;
@@ -216,7 +216,7 @@ impl Shifts {
             }
         }
 
-        return (max_guard, max_guard_total, max_guard_minute);
+        (max_guard, max_guard_total, max_guard_minute)
     }
 
     fn max_guard_minute(&self) -> (u16, u32, u8) {
@@ -226,16 +226,17 @@ impl Shifts {
 
         let m = self.guard_times();
         for (&g, v) in &m {
-            for min in 0..60 {
-                if v[min] as u32 > count {
+            for (min, &val) in v.iter().enumerate() {
+                let val32 = u32::from(val);
+                if val32 > count {
                     guard = g;
-                    count = v[min] as u32;
+                    count = val32;
                     minute = min as u8;
                 }
             }
         }
 
-        return (guard, count, minute);
+        (guard, count, minute)
     }
 }
 
@@ -280,7 +281,7 @@ impl Into<Shifts> for Log {
             panic!("Leftover log lines");
         }
 
-        return Shifts(shifts);
+        Shifts(shifts)
     }
 }
 
@@ -317,7 +318,7 @@ fn main() -> std::io::Result<()> {
         guard,
         total,
         minute,
-        (guard as u64) * (minute as u64)
+        (u64::from(guard)) * (u64::from(minute))
     );
 
     let (guard, count, minute) = shifts.max_guard_minute();
@@ -326,7 +327,7 @@ fn main() -> std::io::Result<()> {
         guard,
         count,
         minute,
-        (guard as u64) * (minute as u64)
+        (u64::from(guard)) * (u64::from(minute))
     );
 
     Ok(())
