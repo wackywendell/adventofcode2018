@@ -7,12 +7,13 @@ extern crate lazy_static;
 extern crate failure;
 
 use clap::{App, Arg};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::str::FromStr;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug, Default)]
 struct Point(i64, i64);
 
 #[derive(Clone, Debug, Fail)]
@@ -64,6 +65,15 @@ impl FromStr for Point {
     }
 }
 
+impl Point {
+    fn manhattan(self, other: Point) -> i64 {
+        let Point(x, y) = self;
+        let Point(x2, y2) = other;
+
+        (x - x2).abs() + (y - y2).abs()
+    }
+}
+
 struct Points(Vec<Point>);
 
 impl Points {
@@ -86,6 +96,71 @@ impl Points {
 
         Ok(Points(maybe_points?))
     }
+
+    fn find_closest(&self, p: Point) -> Option<Point> {
+        let Points(ref ps) = self;
+
+        let (mut d, mut closest): (i64, Option<Point>) = (-1, None);
+        for &p2 in ps {
+            if closest.is_none() && d < 0 {
+                closest = Some(p2);
+                d = p.manhattan(p2);
+                continue;
+            }
+            let d2 = p2.manhattan(p);
+
+            match d2.cmp(&d) {
+                std::cmp::Ordering::Greater => continue,
+                std::cmp::Ordering::Equal => closest = None,
+                std::cmp::Ordering::Less => {
+                    d = d2;
+                    closest = Some(p2);
+                }
+            }
+        }
+
+        closest
+    }
+
+    fn count_distances(&self) -> HashMap<Point, Option<i64>> {
+        let mut h = HashMap::new();
+        let Points(ref ps) = self;
+        if ps.is_empty() {
+            return h;
+        }
+
+        let Point(x0, y0) = ps[0];
+
+        let (mut minx, mut maxx, mut miny, mut maxy): (i64, i64, i64, i64) = (x0, x0, y0, y0);
+
+        for &Point(x, y) in ps {
+            minx = minx.min(x);
+            maxx = maxx.max(x);
+            miny = miny.min(y);
+            maxy = maxy.max(y);
+        }
+
+        for x in minx..=maxx {
+            for y in miny..=maxy {
+                let p = match self.find_closest(Point(x, y)) {
+                    None => continue,
+                    Some(p) => p,
+                };
+
+                let is_edge = x == minx || x == maxx || y == miny || y == maxy;
+
+                if is_edge {
+                    h.insert(p, None);
+                    continue;
+                }
+                h.entry(p)
+                    .and_modify(|o| *o = o.map(|n| n + 1))
+                    .or_insert(Some(1));
+            }
+        }
+
+        h
+    }
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -106,9 +181,14 @@ fn main() -> Result<(), failure::Error> {
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
 
-    let Points(points) = Points::parse_lines(buf_reader.lines())?;
+    let points = Points::parse_lines(buf_reader.lines())?;
 
-    println!("Points: {}", points.len());
+    let ds = points.count_distances();
+    let max_a = ds.values().filter_map(|&v| v).max();
+    match max_a {
+        None => println!("Max area: Not found"),
+        Some(a) => println!("Max area: {}", a),
+    }
 
     Ok(())
 }
