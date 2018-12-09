@@ -24,8 +24,13 @@ path = "src/day4/main.rs"
 name = "day5"
 path = "src/day5/main.rs"
 
+[[bin]]
+name = "day6"
+path = "src/day6/main.rs"
+
 [dependencies]
 chrono = "0.4.6"
 clap = "2.32"
+failure = "0.1"
 lazy_static = "1.2"
 regex = "1"
