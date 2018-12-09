@@ -161,6 +161,46 @@ impl Points {
 
         h
     }
+
+    fn find_area(&self, distance: i64) -> i64 {
+        let Points(ref ps) = self;
+        if ps.is_empty() {
+            return 0;
+        }
+
+        let Point(x0, y0) = ps[0];
+
+        let (mut minx, mut maxx, mut miny, mut maxy): (i64, i64, i64, i64) = (x0, x0, y0, y0);
+
+        for &Point(x, y) in ps {
+            minx = minx.min(x);
+            maxx = maxx.max(x);
+            miny = miny.min(y);
+            maxy = maxy.max(y);
+        }
+
+        let point_count = ps.len();
+        // Any point more than max_reach from an "outermost" point
+        // can't possibly be within a total distance of `distance`
+        // from all points.
+        // This is an overestimate - we could cut this down to something
+        // more circular - but there's no need.
+        let max_reach = distance / (point_count as i64);
+
+        let mut area: i64 = 0;
+        for x in minx - max_reach..=maxx + max_reach {
+            for y in miny - max_reach..=maxy + max_reach {
+                let total_distance: i64 = ps.iter().map(|p| p.manhattan(Point(x, y))).sum();
+
+                if total_distance >= distance {
+                    continue;
+                }
+                area += 1;
+            }
+        }
+
+        area
+    }
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -190,6 +230,9 @@ fn main() -> Result<(), failure::Error> {
         Some(a) => println!("Max area: {}", a),
     }
 
+    let total_a = points.find_area(10000);
+    println!("Total area: {}", total_a);
+
     Ok(())
 }
 
@@ -201,5 +244,22 @@ mod tests {
     fn test_point_from_str() {
         let p = Point::from_str("112, 3");
         assert_eq!(Point(112, 3), p.unwrap());
+    }
+
+    fn str_ok(s: &str) -> Result<&str, failure::Error> {
+        Ok(s)
+    }
+
+    #[test]
+    fn test_area() {
+        let test_input = vec!["1, 1", "1, 6", "8, 3", "3, 4", "5, 5", "8, 9"];
+
+        let points = Points::parse_lines(test_input.iter().map(|&s| str_ok(s))).unwrap();
+        let ds = points.count_distances();
+        let max_a = ds.values().filter_map(|&v| v).max();
+        assert_eq!(Some(17), max_a);
+
+        let total_a = points.find_area(32);
+        assert_eq!(16, total_a);
     }
 }
