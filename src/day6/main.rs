@@ -12,7 +12,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::str::FromStr;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 struct Point(i64, i64);
 
 #[derive(Clone, Debug, Fail)]
@@ -97,4 +97,15 @@ fn main() -> Result<(), failure::Error> {
     println!("Points: {}", points.len());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_point_from_str() {
+        let p = Point::from_str("112, 3");
+        assert_eq!(Point(112, 3), p.unwrap());
+    }
 }
