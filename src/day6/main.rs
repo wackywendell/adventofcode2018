@@ -64,6 +64,30 @@ impl FromStr for Point {
     }
 }
 
+struct Points(Vec<Point>);
+
+impl Points {
+    fn parse_lines<S, E, T>(iter: T) -> Result<Self, failure::Error>
+    where
+        S: AsRef<str>,
+        E: Into<failure::Error>,
+        T: IntoIterator<Item = Result<S, E>>,
+    {
+        let maybe_points: Result<Vec<Point>, failure::Error> = iter
+            .into_iter()
+            .map(|l| {
+                let p: Result<Point, failure::Error> = match l {
+                    Ok(s) => Point::from_str(s.as_ref()).map_err(|e| e.into()),
+                    Err(e) => Err(e.into()),
+                };
+                p
+            })
+            .collect();
+
+        Ok(Points(maybe_points?))
+    }
+}
+
 fn main() -> Result<(), failure::Error> {
     let matches = App::new("Day 6")
         .arg(
@@ -82,17 +106,7 @@ fn main() -> Result<(), failure::Error> {
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
 
-    let maybe_points: Result<Vec<Point>, failure::Error> = buf_reader
-        .lines()
-        .map(|l| {
-            let p: Result<Point, failure::Error> = match l {
-                Ok(s) => Point::from_str(&s).map_err(|e| e.into()),
-                Err(e) => Err(e.into()),
-            };
-            p
-        })
-        .collect();
-    let points: Vec<Point> = maybe_points?;
+    let Points(points) = Points::parse_lines(buf_reader.lines())?;
 
     println!("Points: {}", points.len());
 
