@@ -42,9 +42,8 @@ impl FromStr for Point {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref re: regex::Regex = regex::Regex::new(r"^(\d+),\w*(\d+)$").unwrap();
+            static ref re: regex::Regex = regex::Regex::new(r"^(\d+),\s*(\d+)$").unwrap();
         }
-        println!("Parsing {}", s);
 
         let c = re.captures(s).ok_or_else(|| ParseError::from_line(s))?;
 
@@ -83,9 +82,15 @@ fn main() -> Result<(), failure::Error> {
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
 
-    let maybe_points: Result<Vec<Point>, _> = buf_reader
+    let maybe_points: Result<Vec<Point>, failure::Error> = buf_reader
         .lines()
-        .map(|l| l.map(|s| Point::from_str(&s).unwrap()))
+        .map(|l| {
+            let p: Result<Point, failure::Error> = match l {
+                Ok(s) => Point::from_str(&s).map_err(|e| e.into()),
+                Err(e) => Err(e.into()),
+            };
+            p
+        })
         .collect();
     let points: Vec<Point> = maybe_points?;
 
