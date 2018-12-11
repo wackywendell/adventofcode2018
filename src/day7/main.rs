@@ -121,6 +121,77 @@ impl Graph {
 
         finished
     }
+
+    fn time(s: &str) -> i64 {
+        let bs = s.as_bytes();
+        let a = "A".as_bytes();
+        i64::from(bs[0] - a[0] + 1)
+    }
+
+    fn process(&self, workers: usize, base_time: i64) -> (i64, Vec<String>) {
+        let mut deps = self.as_maps();
+
+        let mut ready: Vec<String> = Vec::new();
+        let mut finished: Vec<String> = Vec::new();
+        for (n, ps) in &deps.parents {
+            if ps.is_empty() {
+                ready.push(n.clone());
+            }
+        }
+
+        // (time finished, job)
+        let mut processing: Vec<(i64, String)> = vec![];
+        let mut t = 0;
+
+        while !ready.is_empty() || !processing.is_empty() {
+            // Keep it reverse sorted, so we can pop the earliest-by-alphabetical element
+            ready.sort_by(|n1, n2| n2.cmp(n1));
+            println!("Time to see what's ready: {:?}", ready);
+            if let Some(n) = ready.pop() {
+                // We have a job ready
+                println!(
+                    "Pushing {}, finishing at {}",
+                    n,
+                    Graph::time(&n) + base_time + t
+                );
+                processing.push((Graph::time(&n) + base_time + t, n));
+                if processing.len() < workers {
+                    continue;
+                }
+            }
+
+            // All workers are full. Advance time until the first one finishes.
+            // Sort so that the earliest completed, earliest alphabetically is last.
+            //processing.sort_unstable_by(|(t1, n1), (t2, n2)| (t2, n1).cmp(&(t1, n2)));
+            processing.sort_unstable_by_key(|(t1, n1)| (-*t1, n1.clone()));
+            println!("Time to process: {:?}", processing);
+            t = processing.last().unwrap().0;
+            println!("Time now {}", t);
+            while !processing.is_empty() && processing.last().unwrap().0 == t {
+                let (_, fin) = processing.pop().unwrap();
+                deps.parents.remove(&fin);
+                let children: HashSet<String> = deps.children.remove(&fin).unwrap();
+                for c in children {
+                    let ps = deps.parents.get_mut(&c).unwrap();
+                    ps.remove(&fin);
+                    if ps.is_empty() {
+                        ready.push(c.clone());
+                    }
+                }
+                finished.push(fin);
+            }
+        }
+
+        if !deps.parents.is_empty() || !deps.children.is_empty() {
+            panic!(
+                "Didn't empty dependency lists! Still left: {}, {}",
+                deps.parents.len(),
+                deps.children.len()
+            )
+        }
+
+        (t, finished)
+    }
 }
 
 impl<'a, S: AsRef<str>> FromIterator<S> for Graph {
@@ -180,5 +251,23 @@ mod tests {
         let graph = Graph::from_iter(lines);
         let finished = graph.breadth_first();
         assert_eq!("CABDFE", finished.join(""));
+    }
+
+    #[test]
+    fn test_process() {
+        let lines = vec![
+            "Step C must be finished before step A can begin.",
+            "Step C must be finished before step F can begin.",
+            "Step A must be finished before step B can begin.",
+            "Step A must be finished before step D can begin.",
+            "Step B must be finished before step E can begin.",
+            "Step D must be finished before step E can begin.",
+            "Step F must be finished before step E can begin.",
+        ];
+
+        let graph = Graph::from_iter(lines);
+        let (t, finished) = graph.process(2, 0);
+        assert_eq!("CABFDE", finished.join(""));
+        assert_eq!(t, 15);
     }
 }
