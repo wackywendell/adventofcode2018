@@ -78,10 +78,7 @@ impl Graph {
             p.insert(dep.parent.clone());
         }
 
-        DependencyMaps {
-            children: children,
-            parents: parents,
-        }
+        DependencyMaps { children, parents }
     }
 
     fn breadth_first(&self) -> Vec<String> {
@@ -124,7 +121,7 @@ impl Graph {
 
     fn time(s: &str) -> i64 {
         let bs = s.as_bytes();
-        let a = "A".as_bytes();
+        let a = b"A";
         i64::from(bs[0] - a[0] + 1)
     }
 
@@ -146,14 +143,8 @@ impl Graph {
         while !ready.is_empty() || !processing.is_empty() {
             // Keep it reverse sorted, so we can pop the earliest-by-alphabetical element
             ready.sort_by(|n1, n2| n2.cmp(n1));
-            println!("Time to see what's ready: {:?}", ready);
             if let Some(n) = ready.pop() {
                 // We have a job ready
-                println!(
-                    "Pushing {}, finishing at {}",
-                    n,
-                    Graph::time(&n) + base_time + t
-                );
                 processing.push((Graph::time(&n) + base_time + t, n));
                 if processing.len() < workers {
                     continue;
@@ -163,10 +154,8 @@ impl Graph {
             // All workers are full. Advance time until the first one finishes.
             // Sort so that the earliest completed, earliest alphabetically is last.
             //processing.sort_unstable_by(|(t1, n1), (t2, n2)| (t2, n1).cmp(&(t1, n2)));
-            processing.sort_unstable_by_key(|(t1, n1)| (-*t1, n1.clone()));
-            println!("Time to process: {:?}", processing);
+            processing.sort_unstable_by_key(|(t1, n1)| (-t1, n1.clone()));
             t = processing.last().unwrap().0;
-            println!("Time now {}", t);
             while !processing.is_empty() && processing.last().unwrap().0 == t {
                 let (_, fin) = processing.pop().unwrap();
                 deps.parents.remove(&fin);
@@ -228,6 +217,9 @@ fn main() -> std::io::Result<()> {
     let finished = graph.breadth_first();
 
     println!("Order: {}", finished.join(""));
+
+    let (t, finished) = graph.process(5, 60);
+    println!("Finishes in {}: {}", t, finished.join(""));
 
     Ok(())
 }
