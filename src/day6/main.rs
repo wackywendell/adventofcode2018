@@ -25,13 +25,13 @@ enum ParseError {
 }
 
 impl ParseError {
-    fn from_line<S: ToString>(s: S) -> ParseError {
+    fn from_line<S: ToString>(s: &S) -> ParseError {
         ParseError::LineError {
             line: s.to_string(),
         }
     }
 
-    fn from_part<P: ToString, L: ToString>(part: P, line: L) -> ParseError {
+    fn from_part<P: ToString, L: ToString>(part: &P, line: &L) -> ParseError {
         ParseError::MatchError {
             part: part.to_string(),
             line: line.to_string(),
@@ -46,20 +46,20 @@ impl FromStr for Point {
             static ref re: regex::Regex = regex::Regex::new(r"^(\d+),\s*(\d+)$").unwrap();
         }
 
-        let c = re.captures(s).ok_or_else(|| ParseError::from_line(s))?;
+        let c = re.captures(s).ok_or_else(|| ParseError::from_line(&s))?;
 
         let x = c
             .get(1)
-            .ok_or_else(|| ParseError::from_line(s))?
+            .ok_or_else(|| ParseError::from_line(&s))?
             .as_str()
             .parse::<i64>()
-            .or_else(|m| Err(ParseError::from_part(m, s)))?;
+            .or_else(|m| Err(ParseError::from_part(&m, &s)))?;
         let y = c
             .get(2)
-            .ok_or_else(|| ParseError::from_line(s))?
+            .ok_or_else(|| ParseError::from_line(&s))?
             .as_str()
             .parse::<i64>()
-            .or_else(|m| Err(ParseError::from_part(m, s)))?;
+            .or_else(|m| Err(ParseError::from_part(&m, &s)))?;
 
         Ok(Point(x, y))
     }

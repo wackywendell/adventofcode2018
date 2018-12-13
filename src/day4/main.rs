@@ -158,8 +158,8 @@ struct Shift {
 impl Shift {
     fn new(guard: u16, start: NaiveDateTime) -> Shift {
         Shift {
+            guard,
             _start: start,
-            guard: guard,
             naps: vec![],
         }
     }
