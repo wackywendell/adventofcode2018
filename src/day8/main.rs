@@ -64,10 +64,10 @@ impl Parsed {
         let mut sum = 0;
         for &n in &self.metadata {
             if n > (self.children.len() as i64) {
-                continue
+                continue;
             }
 
-            sum += self.children[(n-1) as usize].value();
+            sum += self.children[(n - 1) as usize].value();
         }
 
         sum
@@ -102,7 +102,6 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,7 +114,6 @@ mod tests {
 
         assert_eq!(p.sum_metadata(), 138);
     }
-
 
     #[test]
     fn test_value() {
