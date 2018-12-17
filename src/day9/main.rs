@@ -50,8 +50,8 @@ impl Game {
         self.marble += 1;
     }
 
-    fn play(&mut self, nrounds: usize) {
-        for _ in 0..nrounds {
+    fn play(&mut self, rounds: usize) {
+        for _ in 0..rounds {
             self.next();
         }
     }
@@ -70,7 +70,7 @@ fn main() -> std::io::Result<()> {
     println!("High score: {:?}", g.high_score());
 
     let mut g = Game::new(459);
-    g.play(7132000);
+    g.play(7_132_000);
     println!("High score after 100x more rounds: {:?}", g.high_score());
 
     Ok(())
@@ -86,7 +86,7 @@ mod tests {
         g.play(25);
 
         // Below is the order from the site.
-        // Actual order in the datastructure is reversed with the "active" marble
+        // Actual order in the data structure is reversed with the "active" marble
         // at the end.
         // assert_eq!(
         //     g.marbles,
@@ -106,7 +106,7 @@ mod tests {
 
         g = Game::new(13);
         g.play(7999);
-        assert_eq!(g.high_score(), 146373);
+        assert_eq!(g.high_score(), 146_373);
 
         g = Game::new(17);
         g.play(1104);
@@ -114,7 +114,7 @@ mod tests {
 
         g = Game::new(21);
         g.play(6111);
-        assert_eq!(g.high_score(), 54718);
+        assert_eq!(g.high_score(), 54_718);
 
         g = Game::new(30);
         g.play(5807);
