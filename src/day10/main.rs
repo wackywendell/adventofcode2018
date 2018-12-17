@@ -4,55 +4,42 @@
 extern crate nom;
 
 use clap::{App, Arg};
+use nom::types::CompleteStr;
 use nom::digit;
 
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::str::FromStr;
 
-fn from_digits(input: &str) -> Result<i64, std::num::ParseIntError> {
-  input.parse()
-}
-
-fn from_hex(input: &str) -> Result<u8, std::num::ParseIntError> {
-  u8::from_str_radix(input, 16)
-}
-
-fn is_hex_digit(c: char) -> bool {
-  c.is_digit(16)
-}
-
-named!(integer<&str, i64>,
-  map_res!(digit, from_digits)
+named!(integer<CompleteStr, i64>,
+    map_res!(
+        dbg!(recognize!(pair!(
+            dbg!(opt!(alt!(tag_s!("+") | tag_s!("-")))),  // maybe sign?
+            dbg_dmp!(digit)
+        ))),
+        |s:CompleteStr| { FromStr::from_str(s.0) }
+    )
 );
 
-named!(hex_color<&str, (i64, u8)>,
-  do_parse!(
-    sign:       value!(-1, tag!("#"))   >>
-    red:   digit >>
-    (sign, red)
-  )
+#[derive(Debug,Clone,PartialEq,PartialOrd)]
+struct Star {
+    position: (i64, i64),
+    velocity: (i64, i64),
+}
+
+named!(star_line<CompleteStr, Star>,
+    do_parse!(
+        tag!("position=<") >>
+        x: ws!(integer) >>
+        tag!(",") >>
+        y: ws!(integer) >>
+        tag!(">") >>
+        // velocity=< 3, -5>")
+        (Star{position: (x, y), velocity: (0,0)})
+    )
 );
-
-// named!(integer<&str, i64>,
-//   do_parse!(
-//       sign: opt!(value!(tag!("-"), -1)) >>
-//       digits: nom::digit >>
-//       (sign, digits)
-//   )
-// );
-
-// named!(hex_color<&str, Color>,
-//   do_parse!(
-//            tag!("#")   >>
-//     red:   hex_primary >>
-//     green: hex_primary >>
-//     blue:  hex_primary >>
-//     (Color { red, green, blue })
-//   )
-// );
-
 
 fn main() -> std::io::Result<()> {
     let matches = App::new("Day 1")
@@ -97,4 +84,31 @@ fn main() -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_integer_parse() {
+        let parsed = integer(CompleteStr("-120"));
+        println!("Parsed: {:?}", parsed);
+        assert_eq!(parsed, Ok((CompleteStr(""), -120)));
+    }
+
+    #[test]
+    fn test_integer_positive() {
+        let parsed = integer(CompleteStr("+120"));
+        println!("Parsed: {:?}", parsed);
+        assert_eq!(parsed, Ok((CompleteStr(""), 120)));
+    }
+
+    #[test]
+    fn test_parse_star() {
+        let parsed = star_line(CompleteStr("position=< 9,  1> velocity=< 0,  2>"));
+        println!("Parsed: {:?}", parsed);
+        let s = Star{position: (9, 1), velocity: (0, 0)};
+        assert_eq!(parsed, Ok((CompleteStr(""), s)));
+    }
 }
