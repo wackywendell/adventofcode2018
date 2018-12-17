@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["Wendell Smith <wackywendell@gmail.com>"]
 edition = "2018"
 
+[dependencies]
+chrono = "0.4.6"
+clap = "2.32"
+failure = "0.1"
+lazy_static = "1.2"
+regex = "1"
+nom = "4.1"
+
 [[bin]]
 name = "day1"
 path = "src/day1/main.rs"
@@ -40,9 +48,6 @@ path = "src/day8/main.rs"
 name = "day9"
 path = "src/day9/main.rs"
 
-[dependencies]
-chrono = "0.4.6"
-clap = "2.32"
-failure = "0.1"
-lazy_static = "1.2"
-regex = "1"
+[[bin]]
+name = "day10"
+path = "src/day10/main.rs"
