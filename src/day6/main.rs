@@ -131,23 +131,23 @@ impl Points {
 
         let Point(x0, y0) = ps[0];
 
-        let (mut minx, mut maxx, mut miny, mut maxy): (i64, i64, i64, i64) = (x0, x0, y0, y0);
+        let (mut x_min, mut x_max, mut y_min, mut y_max): (i64, i64, i64, i64) = (x0, x0, y0, y0);
 
         for &Point(x, y) in ps {
-            minx = minx.min(x);
-            maxx = maxx.max(x);
-            miny = miny.min(y);
-            maxy = maxy.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
         }
 
-        for x in minx..=maxx {
-            for y in miny..=maxy {
+        for x in x_min..=x_max {
+            for y in y_min..=y_max {
                 let p = match self.find_closest(Point(x, y)) {
                     None => continue,
                     Some(p) => p,
                 };
 
-                let is_edge = x == minx || x == maxx || y == miny || y == maxy;
+                let is_edge = x == x_min || x == x_max || y == y_min || y == y_max;
 
                 if is_edge {
                     h.insert(p, None);
@@ -170,13 +170,13 @@ impl Points {
 
         let Point(x0, y0) = ps[0];
 
-        let (mut minx, mut maxx, mut miny, mut maxy): (i64, i64, i64, i64) = (x0, x0, y0, y0);
+        let (mut x_min, mut x_max, mut y_min, mut y_max): (i64, i64, i64, i64) = (x0, x0, y0, y0);
 
         for &Point(x, y) in ps {
-            minx = minx.min(x);
-            maxx = maxx.max(x);
-            miny = miny.min(y);
-            maxy = maxy.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
         }
 
         let point_count = ps.len();
@@ -188,8 +188,8 @@ impl Points {
         let max_reach = distance / (point_count as i64);
 
         let mut area: i64 = 0;
-        for x in minx - max_reach..=maxx + max_reach {
-            for y in miny - max_reach..=maxy + max_reach {
+        for x in x_min - max_reach..=x_max + max_reach {
+            for y in y_min - max_reach..=y_max + max_reach {
                 let total_distance: i64 = ps.iter().map(|p| p.manhattan(Point(x, y))).sum();
 
                 if total_distance >= distance {
