@@ -23,6 +23,16 @@ named!(integer<CompleteStr, i64>,
     )
 );
 
+named!(integer_s<&str, i64>,
+    map_res!(
+        dbg!(recognize!(pair!(
+            dbg!(opt!(alt!(tag_s!("+") | tag_s!("-")))),  // maybe sign?
+            dbg_dmp!(digit)
+        ))),
+        FromStr::from_str
+    )
+);
+
 #[derive(Debug,Clone,PartialEq,PartialOrd)]
 struct Star {
     position: (i64, i64),
@@ -35,11 +45,68 @@ named!(star_line<CompleteStr, Star>,
         x: ws!(integer) >>
         tag!(",") >>
         y: ws!(integer) >>
+        tag!("> velocity=<") >>
+        vx: ws!(integer) >>
+        tag!(",") >>
+        vy: ws!(integer) >>
         tag!(">") >>
-        // velocity=< 3, -5>")
-        (Star{position: (x, y), velocity: (0,0)})
+        (Star{position: (x, y), velocity: (vx,vy)})
     )
 );
+
+named!(star_line_s<&str, Star>,
+    do_parse!(
+        tag!("position=<") >>
+        x: ws!(integer_s) >>
+        tag!(",") >>
+        y: ws!(integer_s) >>
+        tag!("> velocity=<") >>
+        vx: ws!(integer_s) >>
+        tag!(",") >>
+        vy: ws!(integer_s) >>
+        tag!(">") >>
+        (Star{position: (x, y), velocity: (vx,vy)})
+    )
+);
+
+fn convert_err<F>(err: nom::Err<&str, F>) -> nom::Err<String, F>{
+    use nom::simple_errors::Context::Code;
+    use nom::Err::{Incomplete, Error, Failure};
+    match err {
+        Incomplete(n) => Incomplete(n),
+        Error(Code(s, ek)) => Error(Code(s.to_owned(), ek)),
+        Failure(Code(s, ek)) => Failure(Code(s.to_owned(), ek)),
+    }
+}
+
+struct Stars(Vec<Star>);
+
+impl Stars {
+    fn parse_line(s: &str) -> Result<Star, nom::Err<String, u32>> {
+        star_line_s(s).map(|(_, s)| s).map_err(convert_err)
+    }
+
+    fn parse_lines<'a, S, E, T>(iter: T) -> Result<Self, failure::Error>
+    where
+        S: 'a,
+        S: AsRef<str>,
+        E: Into<failure::Error>,
+        T: IntoIterator<Item = Result<S, E>>,
+    {
+        let maybe_points: Result<Vec<Star>, failure::Error> = iter
+            .into_iter()
+            .map(|l| {
+                let p: Result<Star, failure::Error> = match l {
+                    Ok(s) => star_line_s(s.as_ref()).map(|(_, s)| s).map_err(|e| convert_err(e).into()),
+                    Err(err) => Err(err.into()),
+                };
+                p
+            })
+            .collect();
+
+        Ok(Stars(maybe_points?))
+    }
+}
 
 fn main() -> std::io::Result<()> {
     let matches = App::new("Day 1")
@@ -108,7 +175,7 @@ mod tests {
     fn test_parse_star() {
         let parsed = star_line(CompleteStr("position=< 9,  1> velocity=< 0,  2>"));
         println!("Parsed: {:?}", parsed);
-        let s = Star{position: (9, 1), velocity: (0, 0)};
+        let s = Star{position: (9, 1), velocity: (0, 2)};
         assert_eq!(parsed, Ok((CompleteStr(""), s)));
     }
 }
