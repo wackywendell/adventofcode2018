@@ -7,6 +7,20 @@ use nom::digit;
 
 use std::str::FromStr;
 
+// convert_err converts a nom::Err<&str, ..> into a nom::Err<String, ..> by
+// cloning. This allows code to read and parse without allocating until
+// an error is hit, and only allocate then - so that the resulting value-or-error
+// can be passed up the chain independently of the input.
+pub fn convert_err<F>(err: nom::Err<&str, F>) -> nom::Err<String, F> {
+    use nom::simple_errors::Context::Code;
+    use nom::Err::{Error, Failure, Incomplete};
+    match err {
+        Incomplete(n) => Incomplete(n),
+        Error(Code(s, ek)) => Error(Code(s.to_owned(), ek)),
+        Failure(Code(s, ek)) => Failure(Code(s.to_owned(), ek)),
+    }
+}
+
 // Parse an integer from an input.
 // There are a lot of requirements on the input, but
 // both &str and CompleteStr ought to work here.

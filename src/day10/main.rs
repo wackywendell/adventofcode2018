@@ -30,16 +30,6 @@ named!(star_line_s<&str, Star>,
     )
 );
 
-fn convert_err<F>(err: nom::Err<&str, F>) -> nom::Err<String, F> {
-    use nom::simple_errors::Context::Code;
-    use nom::Err::{Error, Failure, Incomplete};
-    match err {
-        Incomplete(n) => Incomplete(n),
-        Error(Code(s, ek)) => Error(Code(s.to_owned(), ek)),
-        Failure(Code(s, ek)) => Failure(Code(s.to_owned(), ek)),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 struct Stars(Vec<Star>);
 
@@ -56,7 +46,7 @@ impl Stars {
                 let p: Result<Star, failure::Error> = match l {
                     Ok(s) => star_line_s(s.as_ref())
                         .map(|(_, s)| s)
-                        .map_err(|e| convert_err(e).into()),
+                        .map_err(|e| aoc::convert_err(e).into()),
                     Err(err) => Err(err.into()),
                 };
                 p
