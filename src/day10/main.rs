@@ -3,8 +3,6 @@
 #[macro_use]
 extern crate nom;
 
-use adventofcode2018 as aoc;
-
 use clap::{App, Arg};
 
 use std::fs::File;
