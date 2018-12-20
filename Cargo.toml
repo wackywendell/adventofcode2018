@@ -8,6 +8,7 @@ edition = "2018"
 chrono = "0.4.6"
 clap = "2.32"
 failure = "0.1"
+itertools = "0.8.0"
 lazy_static = "1.2"
 regex = "1"
 nom = "4.1"
@@ -51,3 +52,7 @@ path = "src/day9/main.rs"
 [[bin]]
 name = "day10"
 path = "src/day10/main.rs"
+
+[[bin]]
+name = "day11"
+path = "src/day11/main.rs"
