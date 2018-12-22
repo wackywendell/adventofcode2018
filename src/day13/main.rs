@@ -197,7 +197,6 @@ impl Railway {
                 tracks.insert(loc, track);
                 if let Some(dir) = cart_dir {
                     let cart = Cart::new(loc, dir, Turn::Left);
-                    println!("Found cart {} at ({}, {})", cart.as_char(), x, y);
                     carts.push(cart);
                 }
             }
@@ -208,12 +207,12 @@ impl Railway {
 
     fn step(&mut self) -> Vec<(i64, i64)> {
         self.carts.sort();
-        // location -> (collision, ncars)
+        // location -> cart index
         let mut occupied: HashMap<(i64, i64), usize> = HashMap::with_capacity(self.carts.len());
         let mut to_remove: HashSet<usize> = HashSet::new();
 
         for (i, c) in self.carts.iter().enumerate() {
-            if let Some(j) = occupied.insert(c.loc, i) {
+            if let Some(_j) = occupied.insert(c.loc, i) {
                 panic!("Collision not removed at ({}, {})", c.loc.0, c.loc.1);
             }
         }
@@ -284,7 +283,7 @@ impl std::fmt::Display for Railway {
 
         for row in rows {
             let s: String = row.into_iter().collect();
-            write!(f, "{}\n", s.trim_right())?;
+            writeln!(f, "{}", s.trim_right())?;
         }
 
         Ok(())
@@ -327,6 +326,16 @@ fn main() -> Result<(), failure::Error> {
 
     println!("Collision at ({},{}) after {} steps", cx, cy, n);
 
+    let (cx, cy) = loop {
+        n += 1;
+        let _ = railway.step();
+        if railway.carts.len() <= 1 {
+            break railway.carts.first().unwrap().loc;
+        }
+    };
+
+    println!("Last car at ({},{}) after {} steps", cx, cy, n);
+
     Ok(())
 }
 
@@ -342,8 +351,17 @@ mod tests {
 \-+-/  \-+--/
   \------/"#;
 
-    fn get_test_railway() -> Railway {
-        let lines: Vec<&str> = TEST_INPUT.split('\n').skip(1).collect();
+    const TEST_INPUT2: &str = r#"
+/>-<\
+|   |
+| /<+-\
+| | | v
+\>+</ |
+  |   ^
+  \<->/"#;
+
+    fn get_test_railway(s: &str) -> Railway {
+        let lines: Vec<&str> = s.split('\n').skip(1).collect();
         fn ok(s: &str) -> Result<&str, failure::Error> {
             Ok(s)
         }
@@ -353,14 +371,14 @@ mod tests {
 
     #[test]
     fn test_parsing() {
-        let railway = get_test_railway();
+        let railway = get_test_railway(TEST_INPUT);
         assert_eq!(railway.carts.len(), 2);
         assert_eq!(railway.tracks.len(), 48);
     }
 
     #[test]
     fn test_advance() {
-        let mut railway = get_test_railway();
+        let mut railway = get_test_railway(TEST_INPUT);
         println!("{}", railway);
         assert_eq!(railway.step(), vec![]);
         println!("{}", railway);
@@ -376,7 +394,7 @@ mod tests {
         );
 
         // Reset
-        railway = get_test_railway();
+        railway = get_test_railway(TEST_INPUT);
         for i in 0..13 {
             // We should have 13 collision-free steps
             println!("-- {} --\n{}", i, railway);
@@ -396,5 +414,27 @@ mod tests {
         let collision = railway.step();
         println!("-- XX --\n{}", railway);
         assert_eq!(collision, vec![(7, 3)]);
+    }
+
+    #[test]
+    fn test_collision_removal() {
+        let mut railway = get_test_railway(TEST_INPUT2);
+        println!("{}", railway);
+        assert_eq!(railway.carts.len(), 9);
+        let collisions = railway.step();
+        println!("{}", railway);
+        assert_eq!(collisions, vec![(2, 0), (2, 4), (6, 4)]);
+        assert_eq!(railway.carts.len(), 3);
+        let collisions = railway.step();
+        println!("{}", railway);
+        assert_eq!(collisions, vec![]);
+        assert_eq!(railway.carts.len(), 3);
+        let collisions = railway.step();
+        println!("{}", railway);
+        assert_eq!(collisions, vec![(2, 4)]);
+        assert_eq!(
+            railway.carts,
+            vec![Cart::new((6, 4), Direction::Up, Turn::Left)]
+        );
     }
 }
