@@ -224,11 +224,11 @@ impl std::fmt::Display for PotState {
 struct PotAdvancer {
     pots: Pots,
     // Pots -> (start, generation)
-    seen: HashMap<VecDeque<Pot>, (isize, usize)>,
+    seen: HashMap<VecDeque<Pot>, (isize, isize)>,
     repeats: Vec<PotState>,
     // Start_shift, first generation
-    first: Option<(isize, usize)>,
-    index: usize,
+    first: Option<(isize, isize)>,
+    index: isize,
 }
 
 impl PotAdvancer {
@@ -237,30 +237,38 @@ impl PotAdvancer {
         seen.insert(p.state.pots.clone(), (p.state.start, 0));
         PotAdvancer {
             pots: p.clone(),
-            seen: seen,
+            seen,
             repeats: vec![p.state],
             first: None,
             index: 0,
         }
     }
 
-    fn step(&mut self) {
-        self.index += 1;
-
-        if let Some((start_shift, first_gen)) = self.first {
-            let len = self.repeats.len();
-            let skipped = (self.index as isize - first_gen as isize) / len as isize;
-            let r_ix = (self.index - first_gen) % len;
-            let mut state = self.repeats[r_ix].clone();
-            state.start += skipped * start_shift;
-            self.pots.state = state;
+    fn advance(&mut self, dist: isize) {
+        let target_ix = self.index + dist;
+        while self.index != target_ix && self.first.is_none() {
+            self.simple_step();
+        }
+        if self.index == target_ix {
             return;
         }
 
+        self.index = target_ix;
+        let (start_shift, first_gen) = self.first.unwrap();
+        let len = self.repeats.len() as isize;
+        let skipped = (self.index - first_gen) / len;
+        let r_ix = (self.index - first_gen) % len;
+        let mut state = self.repeats[r_ix as usize].clone();
+        state.start += skipped * start_shift;
+        self.pots.state = state;
+    }
+
+    fn simple_step(&mut self) {
+        self.index += 1;
         self.pots.advance();
         let state = self.pots.state.clone();
 
-        let (start_ix, generation): (isize, usize) = match self.seen.entry(state.pots.clone()) {
+        let (start_ix, generation): (isize, isize) = match self.seen.entry(state.pots.clone()) {
             std::collections::hash_map::Entry::Vacant(v) => {
                 v.insert((self.pots.state.start, self.index));
                 self.repeats.push(self.pots.state.clone());
@@ -275,7 +283,7 @@ impl PotAdvancer {
             generation, self.index, shift,
         );
 
-        let just_repeats = Vec::from_iter(self.repeats.drain(generation..));
+        let just_repeats = Vec::from_iter(self.repeats.drain((generation as usize)..));
         self.repeats = just_repeats;
         self.first = Some((shift, generation));
         self.seen.clear();
@@ -320,16 +328,7 @@ fn main() -> std::io::Result<()> {
 
     let mut a = PotAdvancer::new(pots);
 
-    for i in 20..50_000_000_000i64 {
-        if i % 10_000 == 0 {
-            println!("{}", i);
-        }
-        a.step();
-        println!("{}", a.pots.state);
-        if i > 200 {
-            break;
-        }
-    }
+    a.advance(50_000_000_000 - 20);
     println!("Index sum: {}", a.pots.state.index_sum());
 
     Ok(())
