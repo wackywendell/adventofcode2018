@@ -1,15 +1,11 @@
 #![warn(clippy::all)]
 
-#[macro_use]
-extern crate nom;
-#[macro_use]
-extern crate failure;
-
 use clap::{App, Arg};
-use std::collections::HashSet;
+use combine::parser::char as c_char;
+use combine::stream::state::State;
+use combine::Parser;
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::BufReader;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 enum Pot {
@@ -17,80 +13,98 @@ enum Pot {
     Empty,
 }
 
+impl Pot {
+    fn parser<I>() -> impl combine::Parser<Input = I, Output = Self>
+    where
+        I: combine::Stream<Item = char>,
+        // Necessary due to rust-lang/rust#24159
+        I::Error: combine::ParseError<I::Item, I::Range, I::Position>,
+    {
+        let p = c_char::char('#').map(|_| Pot::Plant);
+        let e = c_char::char('.').map(|_| Pot::Empty);
+
+        p.or(e)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 struct PropagationRule {
     input: [Pot; 5],
     output: Pot,
 }
 
+impl PropagationRule {
+    fn parser<I>() -> impl combine::Parser<Input = I, Output = Self>
+    where
+        I: combine::Stream<Item = char>,
+        // Necessary due to rust-lang/rust#24159
+        I::Error: combine::ParseError<I::Item, I::Range, I::Position>,
+    {
+        let inputs = combine::parser::repeat::count_min_max(5, 5, Pot::parser())
+            .map(|v: Vec<Pot>| [v[0], v[1], v[2], v[3], v[4]]);
+        let sep = combine::parser::char::string(" => ");
+        let output = Pot::parser();
+
+        (inputs, sep, output).map(|(i, _, o)| PropagationRule {
+            input: i,
+            output: o,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 struct Pots {
     pots: Vec<Pot>,
+    rules: Vec<PropagationRule>,
+    start: usize,
 }
 
-named!(parse_pot<&str, Pot>,
-    alt!(value!(Pot::Plant, tag!("#")) | value!(Pot::Empty, tag!(".")))
-);
-
-named!(
-    parse_input<&str, Pots>,
-    do_parse!(
-        tag!("initial state: ") >>
-        pots: many1!(parse_pot) >>
-        (Pots{pots})
-    )
-);
-
-named!(
-    parse_rule<&str, PropagationRule>,
-    do_parse!(
-        p0: parse_pot >>
-        p1: parse_pot >>
-        p2: parse_pot >>
-        p3: parse_pot >>
-        p4: parse_pot >>
-        tag!(" => ") >>
-        output: parse_pot >>
-        (PropagationRule{input: [p0,p1,p2,p3,p4], output})
-    )
-);
-
-fn parse_lines<S, E, T>(iter: T) -> Result<(Pots, Vec<PropagationRule>), failure::Error>
-where
-    S: AsRef<str>,
-    E: Send + Sync + Into<failure::Error>,
-    T: IntoIterator<Item = Result<S, E>>,
-{
-    let mut it = iter.into_iter();
-
-    let pots = match it.next() {
-        None => return Err(format_err!("No initial line")),
-        Some(Err(e)) => {
-            let err = e.into();
-            println!("Failed to parse pots from {}", err);
-            return Err(err);
-        }
-        Some(Ok(l)) => {
-            let s: &str = l.as_ref();
-            println!("Parsing pots from {}", l.as_ref());
-            let pots: Pots = parse_input(s).map_err(aoc::convert_err)?.1;
-            pots
-        }
-    };
-
-    println!("Parsed pots: {:?}", pots);
-
-    let mut rules = vec![];
-    for l in it.next() {
-        match l {
-            Err(e) => return Err(e.into()),
-            Ok(s) => {
-                let rule = parse_rule(s.as_ref()).map_err(aoc::convert_err)?.1;
-                rules.push(rule);
-            }
+impl Pots {
+    fn new(pots: Vec<Pot>, rules: Vec<PropagationRule>) -> Self {
+        Pots {
+            pots,
+            rules,
+            start: 0,
         }
     }
 
-    Ok((pots, rules))
+    fn parser<I>() -> impl combine::Parser<Input = I, Output = Self>
+    where
+        I: combine::Stream<Item = char>,
+        I::Error: combine::ParseError<I::Item, I::Range, I::Position>,
+    {
+        let pot = Pot::parser();
+        let pots = combine::parser::repeat::many1(pot);
+
+        (
+            c_char::string("initial state: ").with(pots),
+            combine::parser::repeat::many1(c_char::spaces().with(PropagationRule::parser())),
+        )
+            .map(|(pots, rules)| Pots::new(pots, rules))
+    }
+
+    fn rule_tuple(&self, ix: usize) -> [Pot; 5] {
+        let mut arr = [Pot::Empty; 5];
+        for i in 0..5 {
+            match self.pots.get(ix - 2 + i) {
+                None => {}
+                Some(p) => arr[i] = *p,
+            }
+        }
+
+        arr
+    }
+
+    fn get_rule(&self, ix: usize) -> Option<PropagationRule> {
+        let arr = self.rule_tuple(ix);
+        for &rule in &self.rules {
+            if rule.input == arr {
+                return Some(rule);
+            }
+        }
+
+        None
+    }
 }
 
 fn main() -> std::io::Result<()> {
@@ -108,32 +122,20 @@ fn main() -> std::io::Result<()> {
 
     eprintln!("Using input {}", input_path);
 
-    let file = File::open(input_path)?;
-    let buf_reader = BufReader::new(file);
+    let mut contents = String::new();
+    let mut file = File::open(input_path)?;
+    file.read_to_string(&mut contents)?;
+    let s: &str = contents.as_ref();
+    let stream = State::new(s);
 
-    let mut sum = 0;
-    let mut values = vec![];
-    for (_i, line) in buf_reader.lines().enumerate() {
-        let s = line?;
-        let n = s.trim().parse::<i64>().unwrap();
-        sum += n;
-        values.push(n);
-    }
+    let mut parser = c_char::spaces().with(Pots::parser());
+    let (pots, _) = parser.easy_parse(stream).unwrap();
 
-    println!("Final sum: {}", sum);
-
-    let mut seen: HashSet<i64> = HashSet::new();
-    sum = 0;
-    'outer: loop {
-        for &v in &values {
-            sum += v;
-            if seen.contains(&sum) {
-                println!("Repeated: {}", sum);
-                break 'outer;
-            }
-            seen.insert(sum);
-        }
-    }
+    println!(
+        "Parsed {} pots and {} rules",
+        pots.pots.len(),
+        pots.rules.len()
+    );
 
     Ok(())
 }
@@ -142,7 +144,7 @@ fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    const TEST_INPUT: &'static str = r#"
+    const TEST_INPUT: &str = r#"
 initial state: #..#.#..##......###...###
 
 ...## => #
@@ -160,19 +162,16 @@ initial state: #..#.#..##......###...###
 ###.# => #
 ####. => #"#;
 
-    fn get_test_lines() -> Vec<Result<&'static str, failure::Error>> {
-        TEST_INPUT.split('\n').skip(1).map(Ok).collect()
-    }
-
     #[test]
     fn test_parsing() {
         println!(r##"Test output: r#"{}"#"##, TEST_INPUT);
 
-        let lines = get_test_lines();
+        let mut parser = c_char::spaces().with(Pots::parser());
+        let stream = State::new(TEST_INPUT);
 
-        let (pots, rules) = parse_lines(lines).unwrap();
+        let (pots, _) = parser.easy_parse(stream).unwrap();
 
-        assert_eq!(pots.pots.len(), 10);
-        assert_eq!(rules.len(), 10);
+        assert_eq!(pots.pots.len(), 25);
+        assert_eq!(pots.rules.len(), 14);
     }
 }
