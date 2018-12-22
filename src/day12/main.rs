@@ -68,7 +68,7 @@ impl PropagationRule {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct PotState {
     pots: VecDeque<Pot>,
-    start: usize,
+    start: isize,
 }
 
 impl PotState {
@@ -181,16 +181,39 @@ impl Pots {
         if last_pair[1].full() {
             self.state.pots.push_back(last_pair[1]);
         }
+
+        // Pop any empty ones from the end
+        while let Some(&p) = self.state.pots.back() {
+            if p.full() {
+                break;
+            }
+            self.state.pots.pop_back();
+        }
+
+        // Pop any empty ones from the beginning
+        while let Some(&p) = self.state.pots.front() {
+            if p.full() {
+                break;
+            }
+            self.state.pots.pop_front();
+            self.state.start -= 1;
+        }
     }
 }
 
 impl std::fmt::Display for PotState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for p in self.pots.iter().take(self.start) {
+        for p in self.pots.iter().take(self.start.max(0) as usize) {
             write!(f, "{}", p.as_char())?;
         }
         write!(f, "|")?;
-        for p in self.pots.iter().skip(self.start) {
+        if self.start < 0 {
+            write!(f, "({})", -self.start)?;
+        }
+        // for _ in 0..(-self.start.min(0)) {
+        //     write!(f, "{}", Pot::Empty.as_char())?;
+        // }
+        for p in self.pots.iter().skip(self.start.max(0) as usize) {
             write!(f, "{}", p.as_char())?;
         }
 
