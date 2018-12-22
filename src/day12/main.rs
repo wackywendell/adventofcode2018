@@ -65,11 +65,48 @@ impl PropagationRule {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Pots {
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct PotState {
     pots: VecDeque<Pot>,
-    rules: HashMap<[Pot; 5], Pot>,
     start: usize,
+}
+
+impl PotState {
+    fn index_sum(&self) -> i64 {
+        self.pots
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, p)| {
+                if p.full() {
+                    Some((ix as i64) - (self.start as i64))
+                } else {
+                    None
+                }
+            })
+            .sum()
+    }
+
+    fn rule_tuple(&self, ix: isize) -> [Pot; 5] {
+        let mut arr = [Pot::Empty; 5];
+        fn get(ps: &VecDeque<Pot>, j: isize) -> Pot {
+            if j >= 0 && j < ps.len() as isize {
+                ps[j as usize]
+            } else {
+                Pot::Empty
+            }
+        }
+        for i in -2..=2isize {
+            arr[(i + 2) as usize] = get(&self.pots, ix + i)
+        }
+
+        arr
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Pots {
+    state: PotState,
+    rules: HashMap<[Pot; 5], Pot>,
 }
 
 impl Pots {
@@ -80,9 +117,11 @@ impl Pots {
     {
         let rule_map = HashMap::from_iter(rules.map(|r| (r.input, r.output)));
         Pots {
-            pots: pots.collect(),
+            state: PotState {
+                pots: pots.collect(),
+                start: 0,
+            },
             rules: rule_map,
-            start: 0,
         }
     }
 
@@ -105,33 +144,8 @@ impl Pots {
             })
     }
 
-    fn rule_tuple(&self, ix: isize) -> [Pot; 5] {
-        let mut arr = [Pot::Empty; 5];
-        fn get(ps: &VecDeque<Pot>, j: isize) -> Pot {
-            if j >= 0 && j < ps.len() as isize {
-                ps[j as usize]
-            } else {
-                Pot::Empty
-            }
-        }
-        for i in -2..=2isize {
-            arr[(i + 2) as usize] = get(&self.pots, ix + i)
-        }
-        // println!(
-        //     "ix: {} -> {}{}{}{}{}",
-        //     ix,
-        //     arr[0].as_char(),
-        //     arr[1].as_char(),
-        //     arr[2].as_char(),
-        //     arr[3].as_char(),
-        //     arr[4].as_char()
-        // );
-
-        arr
-    }
-
     fn get_rule(&self, ix: isize) -> Pot {
-        let arr = self.rule_tuple(ix);
+        let arr = self.state.rule_tuple(ix);
         *self.rules.get(&arr).unwrap_or(&Pot::Empty)
     }
 
@@ -139,38 +153,38 @@ impl Pots {
         // Find the first two
         let first_pair = [self.get_rule(-2), self.get_rule(-1)];
         let mut last_pair = first_pair;
-        let ln = self.pots.len() as isize;
+        let ln = self.state.pots.len() as isize;
 
         // transform the existing ones
         for ix in 0..ln + 2 {
             let transformed = self.get_rule(ix);
             if ix >= 2 {
-                self.pots[(ix - 2) as usize] = last_pair[0];
+                self.state.pots[(ix - 2) as usize] = last_pair[0];
             }
             last_pair = [last_pair[1], transformed];
         }
 
         // Add the first two if necessary
         if first_pair[0].full() || first_pair[1].full() {
-            self.pots.push_front(first_pair[1]);
-            self.start += 1;
+            self.state.pots.push_front(first_pair[1]);
+            self.state.start += 1;
         }
         if first_pair[0].full() {
-            self.pots.push_front(first_pair[0]);
-            self.start += 1;
+            self.state.pots.push_front(first_pair[0]);
+            self.state.start += 1;
         }
 
         // And append the last two, if necessary
         if last_pair[0].full() || last_pair[1].full() {
-            self.pots.push_back(last_pair[0]);
+            self.state.pots.push_back(last_pair[0]);
         }
         if last_pair[1].full() {
-            self.pots.push_back(last_pair[1]);
+            self.state.pots.push_back(last_pair[1]);
         }
     }
 }
 
-impl std::fmt::Display for Pots {
+impl std::fmt::Display for PotState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for p in self.pots.iter().take(self.start) {
             write!(f, "{}", p.as_char())?;
@@ -181,6 +195,59 @@ impl std::fmt::Display for Pots {
         }
 
         Ok(())
+    }
+}
+
+struct PotAdvancer {
+    pots: Pots,
+    seen: HashMap<PotState, usize>,
+    repeats: Vec<PotState>,
+    first: Option<usize>,
+    index: usize,
+}
+
+impl PotAdvancer {
+    fn new(p: Pots) -> Self {
+        let mut seen = HashMap::new();
+        seen.insert(p.state.clone(), 0);
+        PotAdvancer {
+            pots: p.clone(),
+            seen: seen,
+            repeats: vec![p.state],
+            first: None,
+            index: 0,
+        }
+    }
+
+    fn step(&mut self) {
+        self.index += 1;
+
+        if let Some(first) = self.first {
+            let len = self.repeats.len();
+            let r_ix = (self.index - first) % len;
+            let state = self.repeats[r_ix].clone();
+            self.pots.state = state;
+            return;
+        }
+
+        self.pots.advance();
+        let state = self.pots.state.clone();
+
+        let start_ix: usize = match self.seen.entry(state.clone()) {
+            std::collections::hash_map::Entry::Vacant(v) => {
+                v.insert(self.index);
+                self.repeats.push(self.pots.state.clone());
+                return;
+            }
+            std::collections::hash_map::Entry::Occupied(o) => *o.get(),
+        };
+
+        println!("Found repeat at indices {} - {}", start_ix, self.index);
+
+        let just_repeats = Vec::from_iter(self.repeats.drain(start_ix..));
+        self.repeats = just_repeats;
+        self.first = Some(start_ix);
+        self.seen.clear();
     }
 }
 
@@ -206,13 +273,33 @@ fn main() -> std::io::Result<()> {
     let stream = State::new(s);
 
     let mut parser = c_char::spaces().with(Pots::parser());
-    let (pots, _) = parser.easy_parse(stream).unwrap();
+    let (mut pots, _) = parser.easy_parse(stream).unwrap();
 
     println!(
         "Parsed {} pots and {} rules",
-        pots.pots.len(),
+        pots.state.pots.len(),
         pots.rules.len()
     );
+
+    for _ in 0..20 {
+        pots.advance();
+        println!("{}", pots.state);
+    }
+    println!("Index sum: {}", pots.state.index_sum());
+
+    let mut a = PotAdvancer::new(pots);
+
+    for i in 20..50_000_000_000i64 {
+        if i % 10_000 == 0 {
+            println!("{}", i);
+        }
+        a.step();
+        println!("{}", a.pots.state);
+        if i > 200 {
+            break;
+        }
+    }
+    println!("Index sum: {}", a.pots.state.index_sum());
 
     Ok(())
 }
@@ -248,7 +335,7 @@ initial state: #..#.#..##......###...###
 
         let (pots, _) = parser.easy_parse(stream).unwrap();
 
-        assert_eq!(pots.pots.len(), 25);
+        assert_eq!(pots.state.pots.len(), 25);
         assert_eq!(pots.rules.len(), 14);
     }
 
@@ -260,11 +347,12 @@ initial state: #..#.#..##......###...###
         let stream = State::new(TEST_INPUT);
         let (mut pots, _) = parser.easy_parse(stream).unwrap();
         for i in 0..20 {
-            println!("Pots {:2}: {}", i, pots);
+            println!("Pots {:2}: {}", i, pots.state);
             pots.advance();
         }
 
-        let state_str = format!("{}", pots);
-        assert_eq!(state_str, "#.|...##....#####...#######....#.#..##")
+        let state_str = format!("{}", pots.state);
+        assert_eq!(state_str, "#.|...##....#####...#######....#.#..##");
+        assert_eq!(pots.state.index_sum(), 325);
     }
 }
