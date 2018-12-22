@@ -27,18 +27,18 @@ impl Parsed {
     }
 
     fn parse_single(nums: &[i64]) -> (Parsed, &[i64]) {
-        let nchildren = nums[0] as usize;
-        let nmetadata = nums[1] as usize;
+        let n_children = nums[0] as usize;
+        let n_metadata = nums[1] as usize;
 
         let mut remaining = &nums[2..];
         let mut children = vec![];
-        for _ in 0..nchildren {
+        for _ in 0..n_children {
             let (child, r) = Parsed::parse_single(remaining);
             children.push(child);
             remaining = r;
         }
 
-        let (metadata, remaining) = remaining.split_at(nmetadata);
+        let (metadata, remaining) = remaining.split_at(n_metadata);
 
         let p = Parsed {
             children,
