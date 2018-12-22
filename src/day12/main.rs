@@ -223,16 +223,18 @@ impl std::fmt::Display for PotState {
 
 struct PotAdvancer {
     pots: Pots,
-    seen: HashMap<PotState, usize>,
+    // Pots -> (start, generation)
+    seen: HashMap<VecDeque<Pot>, (isize, usize)>,
     repeats: Vec<PotState>,
-    first: Option<usize>,
+    // Start_shift, first generation
+    first: Option<(isize, usize)>,
     index: usize,
 }
 
 impl PotAdvancer {
     fn new(p: Pots) -> Self {
         let mut seen = HashMap::new();
-        seen.insert(p.state.clone(), 0);
+        seen.insert(p.state.pots.clone(), (p.state.start, 0));
         PotAdvancer {
             pots: p.clone(),
             seen: seen,
@@ -245,10 +247,12 @@ impl PotAdvancer {
     fn step(&mut self) {
         self.index += 1;
 
-        if let Some(first) = self.first {
+        if let Some((start_shift, first_gen)) = self.first {
             let len = self.repeats.len();
-            let r_ix = (self.index - first) % len;
-            let state = self.repeats[r_ix].clone();
+            let skipped = (self.index as isize - first_gen as isize) / len as isize;
+            let r_ix = (self.index - first_gen) % len;
+            let mut state = self.repeats[r_ix].clone();
+            state.start += skipped * start_shift;
             self.pots.state = state;
             return;
         }
@@ -256,20 +260,24 @@ impl PotAdvancer {
         self.pots.advance();
         let state = self.pots.state.clone();
 
-        let start_ix: usize = match self.seen.entry(state.clone()) {
+        let (start_ix, generation): (isize, usize) = match self.seen.entry(state.pots.clone()) {
             std::collections::hash_map::Entry::Vacant(v) => {
-                v.insert(self.index);
+                v.insert((self.pots.state.start, self.index));
                 self.repeats.push(self.pots.state.clone());
                 return;
             }
             std::collections::hash_map::Entry::Occupied(o) => *o.get(),
         };
 
-        println!("Found repeat at indices {} - {}", start_ix, self.index);
+        let shift = self.pots.state.start - start_ix;
+        println!(
+            "Found repeat at indices {} - {} with shift {}",
+            generation, self.index, shift,
+        );
 
-        let just_repeats = Vec::from_iter(self.repeats.drain(start_ix..));
+        let just_repeats = Vec::from_iter(self.repeats.drain(generation..));
         self.repeats = just_repeats;
-        self.first = Some(start_ix);
+        self.first = Some((shift, generation));
         self.seen.clear();
     }
 }
