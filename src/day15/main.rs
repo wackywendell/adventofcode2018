@@ -86,10 +86,14 @@ impl Battle {
         })
     }
 
-    fn empty_neighbors(&self, loc: Location) -> Vec<Location> {
+    fn empty_neighbors(&self, loc: Location, allow: Option<Location>) -> Vec<Location> {
         let (y, x) = loc;
         let mut locs: Vec<Location> = vec![(y - 1, x), (y, x - 1), (y, x + 1), (y + 1, x)];
-        locs.retain(|loc| self.squares.contains(loc) && !self.occupied.contains(loc));
+        // Keep neigbors that are (in allow) or (are viable squares and unoccupied)
+        locs.retain(|&loc| {
+            allow.map(|l| l == loc).unwrap_or(false)
+                || (self.squares.contains(&loc) && !self.occupied.contains(&loc))
+        });
         locs
     }
 
@@ -104,11 +108,6 @@ impl Battle {
             // path: Vec<Location>,
             covered: i16,
         };
-
-        let neighbors = self.empty_neighbors(start);
-        if neighbors.is_empty() {
-            return None;
-        }
 
         let mut partials: Vec<PartialPath> = vec![PartialPath {
             dist: start.dist(end),
@@ -139,7 +138,7 @@ impl Battle {
                 return Some((popped.covered, popped.first_step));
             }
 
-            for n in self.empty_neighbors(popped.loc) {
+            for n in self.empty_neighbors(popped.loc, None) {
                 if !seen.insert(n) {
                     // We've been here before
                     continue;
@@ -172,13 +171,13 @@ impl Battle {
                 continue;
             }
 
-            for empty in self.empty_neighbors(target.location) {
+            for empty in self.empty_neighbors(target.location, Some(character.location)) {
                 let (dist, step) = match self.shortest_distance(character.location, empty) {
                     None => continue,
                     Some(sd) => sd,
                 };
 
-                choices.push((dist, empty, step));
+                choices.push((dist, empty, target.location, step));
             }
         }
 
@@ -188,7 +187,33 @@ impl Battle {
         //     println!("{} - {:?} - {:?}", d, e, s);
         // }
 
-        choices.first().map(|&(_, e, s)| (s, e))
+        choices.first().map(|&(_, _, t, s)| (s, t))
+    }
+
+    fn round(&mut self) {
+        for ix in 0..self.characters.len() {
+            let mut c = self.characters[ix];
+            if c.hp <= 0 {
+                // Dead characters don't move
+                continue;
+            }
+            let (step, mut target) = match self.find_target(c) {
+                None => {
+                    // This character can't reach any enemies.
+                    // No moving or attacking.
+                    continue;
+                }
+                Some(st) => st,
+            };
+            // Move. This may be a no-op if we're already next to a target.
+            c.location = step;
+            self.characters[ix] = c;
+
+            // Attack.
+            if c.location.dist(target) == 1 {
+                target.hp -= c.attack_power();
+            }
+        }
     }
 }
 
@@ -270,7 +295,7 @@ mod tests {
         let (s, g) = battle.find_target(c).unwrap();
         println!("{:?}  {:?}", s, g);
         assert_eq!(s, (1, 2));
-        assert_eq!(g, (1, 3));
+        assert_eq!(g, (1, 4));
     }
 
     #[test]
@@ -293,6 +318,29 @@ mod tests {
         let (s, g) = battle.find_target(c).unwrap();
         println!("{:?}  {:?}", s, g);
         assert_eq!(s, (1, 3));
-        assert_eq!(g, (4, 2));
+        assert_eq!(g, (4, 1));
+    }
+
+    #[test]
+    fn test_near_targeting() {
+        let test_input = r#"
+#######
+#.EG..#
+#..G..#
+#..#..#
+#G....#
+#######"#;
+
+        let battle = get_test_battle(test_input);
+        assert_eq!(battle.characters.len(), 4);
+        assert_eq!(battle.occupied.len(), battle.characters.len());
+        assert_eq!(battle.squares.len(), 19);
+
+        let &c = battle.characters.first().unwrap();
+        assert_eq!(c.location, (1, 2));
+        let (s, g) = battle.find_target(c).unwrap();
+        println!("{:?}  {:?}", s, g);
+        assert_eq!(s, (1, 2));
+        assert_eq!(g, (1, 3));
     }
 }
