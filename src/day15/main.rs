@@ -313,7 +313,7 @@ impl Battle {
     }
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), failure::Error> {
     let matches = App::new("Day 15")
         .arg(
             Arg::with_name("input")
@@ -330,30 +330,10 @@ fn main() -> std::io::Result<()> {
 
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
+    let mut battle = Battle::parse_lines(buf_reader.lines(), 200)?;
+    let (rounds, hp, side) = battle.complete();
 
-    let mut sum = 0;
-    let mut values = vec![];
-    for (_i, line) in buf_reader.lines().enumerate() {
-        let s = line?;
-        let n = s.trim().parse::<i64>().unwrap();
-        sum += n;
-        values.push(n);
-    }
-
-    println!("Final sum: {}", sum);
-
-    let mut seen: HashSet<i64> = HashSet::new();
-    sum = 0;
-    'outer: loop {
-        for &v in &values {
-            sum += v;
-            if seen.contains(&sum) {
-                println!("Repeated: {}", sum);
-                break 'outer;
-            }
-            seen.insert(sum);
-        }
-    }
+    println!("{:?} win after {} rounds with {} hp left. Score: {}", side, rounds, hp, hp * rounds as i64);
 
     Ok(())
 }
