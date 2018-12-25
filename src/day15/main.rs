@@ -36,10 +36,6 @@ impl Character {
     fn new(location: Location, hp: i64, side: Side) -> Self {
         Character { location, hp, side }
     }
-
-    fn attack_power(self) -> i64 {
-        3
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,10 +43,11 @@ struct Battle {
     squares: HashSet<Location>,
     occupied: HashSet<Location>,
     characters: Vec<Character>,
+    elf_power: i64,
 }
 
 impl Battle {
-    fn parse_lines<S, E, T>(iter: T, start_hp: i64) -> Result<Self, failure::Error>
+    fn parse_lines<S, E, T>(iter: T, start_hp: i64, elf_power: i64) -> Result<Self, failure::Error>
     where
         S: AsRef<str>,
         E: Into<failure::Error>,
@@ -87,6 +84,7 @@ impl Battle {
             squares,
             characters,
             occupied,
+            elf_power,
         })
     }
 
@@ -160,7 +158,7 @@ impl Battle {
                     loc: n,
                     first_step,
                     covered: popped.covered + 1,
-                    path: path,
+                    path,
                 };
                 partials.push(p);
             }
@@ -228,6 +226,13 @@ impl Battle {
         target
     }
 
+    fn attack_power(&self, character: Character) -> i64 {
+        match character.side {
+            Side::Goblin => 3,
+            Side::Elf => self.elf_power,
+        }
+    }
+
     fn round(&mut self) -> bool {
         for ix in 0..self.characters.len() {
             let mut c = self.characters[ix];
@@ -260,12 +265,13 @@ impl Battle {
             self.characters[ix] = c;
 
             // Attack.
+            let ap = self.attack_power(c);
             let to_remove = if let Some(t) = self.target_to_attack(c) {
                 // println!(
                 //     "Attack by {:?}({}) at {:?} against {:?}({}) at {:?}",
                 //     c.side, c.hp, c.location, t.side, t.hp, t.location
                 // );
-                t.hp -= c.attack_power();
+                t.hp -= ap;
                 if t.hp <= 0 {
                     Some(t.location)
                 } else {
@@ -282,14 +288,8 @@ impl Battle {
         }
 
         self.characters.sort();
-        return true;
-    }
 
-    fn get_characters(&self) -> Vec<Character> {
-        self.characters
-            .iter()
-            .filter_map(|&c| if c.hp > 0 { Some(c) } else { None })
-            .collect()
+        true
     }
 
     // Run to completion. Returns (# of rounds, total hp, side that won)
@@ -311,6 +311,13 @@ impl Battle {
 
         (n, hp, side)
     }
+
+    fn deaths(&self, side: Side) -> usize {
+        self.characters
+            .iter()
+            .filter(|c| c.side == side && c.hp <= 0)
+            .count()
+    }
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -330,10 +337,37 @@ fn main() -> Result<(), failure::Error> {
 
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
-    let mut battle = Battle::parse_lines(buf_reader.lines(), 200)?;
+    let initial = Battle::parse_lines(buf_reader.lines(), 200, 3)?;
+    let mut battle = initial.clone();
     let (rounds, hp, side) = battle.complete();
 
-    println!("{:?} win after {} rounds with {} hp left. Score: {}", side, rounds, hp, hp * rounds as i64);
+    println!(
+        "{:?} win after {} rounds with {} hp left. Score: {}",
+        side,
+        rounds,
+        hp,
+        hp * rounds as i64
+    );
+
+    let mut elf_power = 2;
+    while battle.deaths(Side::Elf) > 0 {
+        battle = initial.clone();
+        elf_power += 1;
+        battle.elf_power = elf_power;
+        let (rounds, hp, side) = battle.complete();
+
+        let elf_deaths = battle.deaths(Side::Elf);
+
+        println!(
+            "{}: {:?} win after {} rounds with {} hp left ({} elf deaths). Score: {}",
+            elf_power,
+            side,
+            rounds,
+            hp,
+            elf_deaths,
+            hp * rounds as i64
+        );
+    }
 
     Ok(())
 }
@@ -348,7 +382,15 @@ mod tests {
             Ok(s)
         }
 
-        Battle::parse_lines(lines.into_iter().map(ok), 200).unwrap()
+        Battle::parse_lines(lines.into_iter().map(ok), 200, 3).unwrap()
+    }
+
+    fn get_characters(battle: &Battle) -> Vec<Character> {
+        battle
+            .characters
+            .iter()
+            .filter_map(|&c| if c.hp > 0 { Some(c) } else { None })
+            .collect()
     }
 
     #[test]
@@ -480,11 +522,11 @@ mod tests {
         let mut battle = get_test_battle(initial);
         println!("Running round 1");
         battle.round();
-        let chars = battle.get_characters();
+        let chars = get_characters(&battle);
 
         let expected_hps = &[200i64, 197, 197, 200, 197, 197];
         let round1 = get_test_battle_with_hps(round1_str, expected_hps);
-        let exp_chars = round1.get_characters();
+        let exp_chars = get_characters(&round1);
         assert_eq!(chars, exp_chars);
 
         let round2_str = r"
@@ -498,10 +540,10 @@ mod tests {
 
         println!("Running round 2");
         battle.round();
-        let chars = battle.get_characters();
+        let chars = get_characters(&battle);
         let expected_hps = &[200i64, 200, 188, 194, 194, 194];
         let round2 = get_test_battle_with_hps(round2_str, expected_hps);
-        let exp_chars = round2.get_characters();
+        let exp_chars = get_characters(&round2);
         assert_eq!(chars, exp_chars);
 
         let round23_str = r"
@@ -514,14 +556,14 @@ mod tests {
 #######";
         let expected_hps = &[200i64, 200, 131, 131, 131];
         let round23 = get_test_battle_with_hps(round23_str, expected_hps);
-        let exp_chars = round23.get_characters();
+        let exp_chars = get_characters(&round23);
 
         for n in 2..23 {
             println!("Running round {}", n + 1);
             battle.round();
         }
 
-        let chars = battle.get_characters();
+        let chars = get_characters(&battle);
 
         assert_eq!(chars, exp_chars);
 
@@ -535,7 +577,7 @@ mod tests {
 #######";
         let expected_hps = &[200i64, 131, 200, 128, 128];
         let round24 = get_test_battle_with_hps(round24_str, expected_hps);
-        let exp_chars = round24.get_characters();
+        let exp_chars = get_characters(&round24);
 
         for n in 23..24 {
             println!("Running round {}", n + 1);
@@ -543,7 +585,7 @@ mod tests {
             println!("Occupied: {:?}", battle.occupied);
         }
 
-        let chars = battle.get_characters();
+        let chars = get_characters(&battle);
 
         assert_eq!(chars, exp_chars);
 
@@ -557,14 +599,14 @@ mod tests {
 #######";
         let expected_hps = &[200i64, 131, 125, 200, 125];
         let round25 = get_test_battle_with_hps(round25_str, expected_hps);
-        let exp_chars = round25.get_characters();
+        let exp_chars = get_characters(&round25);
 
         for n in 24..25 {
             println!("Running round {}", n + 1);
             battle.round();
         }
 
-        let chars = battle.get_characters();
+        let chars = get_characters(&battle);
 
         assert_eq!(chars, exp_chars);
 
@@ -579,7 +621,7 @@ mod tests {
 
         let expected_hps = &[200i64, 131, 59, 200];
         let round47 = get_test_battle_with_hps(round47_str, expected_hps);
-        let exp_chars = round47.get_characters();
+        let exp_chars = get_characters(&round47);
 
         for n in 25..47 {
             println!("Running round {}", n + 1);
@@ -587,11 +629,11 @@ mod tests {
             assert!(finished);
         }
 
-        let chars = battle.get_characters();
+        let chars = get_characters(&battle);
 
         assert_eq!(chars, exp_chars);
 
-        println!("Running round {}", 48);
+        println!("Running round 48");
         let finished = battle.round();
         assert!(!finished);
     }
