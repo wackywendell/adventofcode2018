@@ -287,6 +287,13 @@ impl Battle {
             }
         }
 
+        // self.characters.retain(|c| c.hp > 0);
+        self.occupied.clear();
+        for c in &self.characters {
+            if c.hp > 0 {
+                self.occupied.insert(c.location);
+            }
+        }
         self.characters.sort();
 
         true
@@ -317,6 +324,30 @@ impl Battle {
             .iter()
             .filter(|c| c.side == side && c.hp <= 0)
             .count()
+    }
+
+    // Run to completion. Returns (# of rounds, total hp, elf power)
+    fn save_the_elves(&mut self) -> (usize, i64, i64) {
+        let initial = self.clone();
+        let mut elf_power = self.elf_power;
+        let (rounds, hp, _) = self.complete();
+        let mut ret = (rounds, hp, elf_power);
+        while self.deaths(Side::Elf) > 0 {
+            *self = initial.clone();
+            elf_power += 1;
+            self.elf_power = elf_power;
+            let (rounds, hp, side) = self.complete();
+
+            let elf_deaths = self.deaths(Side::Elf);
+            println!(
+                "{:?} win with {} hp and {} elves died after {} rounds at elf power {}.",
+                side, hp, elf_deaths, rounds, elf_power
+            );
+
+            ret = (rounds, hp, elf_power);
+        }
+
+        ret
     }
 }
 
@@ -349,25 +380,16 @@ fn main() -> Result<(), failure::Error> {
         hp * rounds as i64
     );
 
-    let mut elf_power = 2;
-    while battle.deaths(Side::Elf) > 0 {
-        battle = initial.clone();
-        elf_power += 1;
-        battle.elf_power = elf_power;
-        let (rounds, hp, side) = battle.complete();
+    let mut battle = initial.clone();
+    let (rounds, hp, elf_power) = battle.save_the_elves();
 
-        let elf_deaths = battle.deaths(Side::Elf);
-
-        println!(
-            "{}: {:?} win after {} rounds with {} hp left ({} elf deaths). Score: {}",
-            elf_power,
-            side,
-            rounds,
-            hp,
-            elf_deaths,
-            hp * rounds as i64
-        );
-    }
+    println!(
+        "Elves win with {} power after {} rounds with {} hp left. Score: {}",
+        elf_power,
+        rounds,
+        hp,
+        rounds as i64 * hp
+    );
 
     Ok(())
 }
@@ -655,5 +677,125 @@ mod tests {
         assert_eq!(rounds, 47);
         assert_eq!(hp, 590);
         assert_eq!(side, Side::Goblin);
+    }
+
+    #[test]
+    fn test_maximization() {
+        let initial = r"
+#######
+#.G...#
+#...EG#
+#.#.#G#
+#..G#E#
+#.....#
+#######";
+
+        let finished = r"
+#######
+#..E..#
+#...E.#
+#.#.#.#
+#...#.#
+#.....#
+#######";
+
+        let mut battle = get_test_battle(initial);
+
+        let (r, hp, power) = battle.save_the_elves();
+        assert_eq!(r, 29);
+        assert_eq!(hp, 172);
+        assert_eq!(power, 15);
+        assert_eq!(r as i64 * hp, 4988);
+        let end_state = get_test_battle_with_hps(finished, &[158, 14]);
+        assert_eq!(get_characters(&battle), get_characters(&end_state));
+
+        let next = r"
+#######
+#E..EG#
+#.#G.E#
+#E.##E#
+#G..#.#
+#..E#.#
+#######";
+
+        let finished = r"
+#######
+#.E.E.#
+#.#E..#
+#E.##E#
+#.E.#.#
+#...#.#
+#######";
+
+        let mut battle = get_test_battle(next);
+
+        let (r, hp, power) = battle.save_the_elves();
+        assert_eq!(r, 33);
+        assert_eq!(hp, 948);
+        assert_eq!(power, 4);
+        assert_eq!(r as i64 * hp, 31284);
+        let end_state = get_test_battle_with_hps(finished, &[200, 23, 200, 125, 200, 200]);
+        assert_eq!(get_characters(&battle), get_characters(&end_state));
+
+        let next = r"
+#######
+#E.G#.#
+#.#G..#
+#G.#.G#
+#G..#.#
+#...E.#
+#######";
+
+        let finished = r"
+#######
+#.E.#.#
+#.#E..#
+#..#..#
+#...#.#
+#.....#
+#######";
+
+        let mut battle = get_test_battle(next);
+        let (r, hp, power) = battle.save_the_elves();
+        assert_eq!(r, 37);
+        assert_eq!(hp, 94);
+        assert_eq!(power, 15);
+        assert_eq!(r as i64 * hp, 3478);
+        let end_state = get_test_battle_with_hps(finished, &[8, 86]);
+        assert_eq!(get_characters(&battle), get_characters(&end_state));
+
+        let next = r"
+#######
+#.E...#
+#.#..G#
+#.###.#
+#E#G#G#
+#...#G#
+#######";
+
+        let mut battle = get_test_battle(next);
+        let (r, hp, power) = battle.save_the_elves();
+        assert_eq!(r, 39);
+        assert_eq!(hp, 166);
+        assert_eq!(power, 12);
+        assert_eq!(r as i64 * hp, 6474);
+
+        let next = r"
+#########
+#G......#
+#.E.#...#
+#..##..G#
+#...##..#
+#...#...#
+#.G...G.#
+#.....G.#
+#########";
+
+        let mut battle = get_test_battle(next);
+        let (r, hp, power) = battle.save_the_elves();
+        assert_eq!(r, 30);
+        assert_eq!(hp, 38);
+        assert_eq!(power, 34);
+        assert_eq!(r as i64 * hp, 1140);
     }
 }
