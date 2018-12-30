@@ -1,7 +1,7 @@
 #![warn(clippy::all)]
 
 use clap::{App, Arg};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -44,6 +44,7 @@ struct Battle {
     occupied: HashSet<Location>,
     characters: Vec<Character>,
     elf_power: i64,
+    side_counts: HashMap<Side, usize>,
 }
 
 impl Battle {
@@ -80,11 +81,18 @@ impl Battle {
             }
         }
 
+        let mut side_counts = HashMap::new();
+        for c in &characters {
+            let e = side_counts.entry(c.side).or_default();
+            *e += 1;
+        }
+
         Ok(Battle {
             squares,
             characters,
             occupied,
             elf_power,
+            side_counts,
         })
     }
 
@@ -287,7 +295,7 @@ impl Battle {
             }
         }
 
-        // self.characters.retain(|c| c.hp > 0);
+        self.characters.retain(|c| c.hp > 0);
         self.occupied.clear();
         for c in &self.characters {
             if c.hp > 0 {
@@ -320,18 +328,33 @@ impl Battle {
     }
 
     fn deaths(&self, side: Side) -> usize {
-        self.characters
-            .iter()
-            .filter(|c| c.side == side && c.hp <= 0)
-            .count()
+        // self.characters
+        //     .iter()
+        //     .filter(|c| c.side == side && c.hp <= 0)
+        //     .count()
+
+        let mut deaths = self.side_counts[&side];
+        for c in &self.characters {
+            if c.side != side || c.hp < 0 {
+                continue;
+            }
+            deaths -= 1;
+        }
+
+        deaths
     }
 
     // Run to completion. Returns (# of rounds, total hp, elf power)
     fn save_the_elves(&mut self) -> (usize, i64, i64) {
         let initial = self.clone();
         let mut elf_power = self.elf_power;
-        let (rounds, hp, _) = self.complete();
+        let (rounds, hp, side) = self.complete();
         let mut ret = (rounds, hp, elf_power);
+        let elf_deaths = self.deaths(Side::Elf);
+        println!(
+            "{:?} win with {} hp and {} elves died after {} rounds at elf power {}.",
+            side, hp, elf_deaths, rounds, elf_power
+        );
         while self.deaths(Side::Elf) > 0 {
             *self = initial.clone();
             elf_power += 1;
@@ -391,6 +414,8 @@ fn main() -> Result<(), failure::Error> {
         rounds as i64 * hp
     );
 
+    // Accepted score for my inputs is 52688
+
     Ok(())
 }
 
@@ -433,7 +458,6 @@ mod tests {
         let &c = battle.characters.first().unwrap();
         assert_eq!(c.location, (1, 1));
         let (s, g, _) = battle.find_target(c).unwrap();
-        println!("{:?}  {:?}", s, g);
         assert_eq!(s, (1, 2));
         assert_eq!(g, (1, 4));
     }
@@ -458,9 +482,7 @@ mod tests {
 
         let &c = battle.characters.first().unwrap();
         assert_eq!(c.location, (2, 3));
-        println!("Find target!");
         let (s, g, _) = battle.find_target(c).unwrap();
-        println!("{:?}  {:?}", s, g);
         assert_eq!(s, (2, 2));
         assert_eq!(g, (8, 4));
     }
@@ -483,7 +505,6 @@ mod tests {
         let &c = battle.characters.first().unwrap();
         assert_eq!(c.location, (1, 2));
         let (s, g, _) = battle.find_target(c).unwrap();
-        println!("{:?}  {:?}", s, g);
         assert_eq!(s, (1, 3));
         assert_eq!(g, (4, 1));
     }
@@ -506,7 +527,6 @@ mod tests {
         let &c = battle.characters.first().unwrap();
         assert_eq!(c.location, (1, 2));
         let (s, g, _) = battle.find_target(c).unwrap();
-        println!("{:?}  {:?}", s, g);
         assert_eq!(s, (1, 2));
         assert_eq!(g, (1, 3));
     }
@@ -604,7 +624,6 @@ mod tests {
         for n in 23..24 {
             println!("Running round {}", n + 1);
             battle.round();
-            println!("Occupied: {:?}", battle.occupied);
         }
 
         let chars = get_characters(&battle);
@@ -736,7 +755,10 @@ mod tests {
         assert_eq!(r as i64 * hp, 31284);
         let end_state = get_test_battle_with_hps(finished, &[200, 23, 200, 125, 200, 200]);
         assert_eq!(get_characters(&battle), get_characters(&end_state));
+    }
 
+    #[test]
+    fn test_more_maximization() {
         let next = r"
 #######
 #E.G#.#
@@ -773,12 +795,24 @@ mod tests {
 #...#G#
 #######";
 
+        let finished = r"
+#######
+#...E.#
+#.#..E#
+#.###.#
+#.#.#.#
+#...#.#
+#######
+";
+
         let mut battle = get_test_battle(next);
         let (r, hp, power) = battle.save_the_elves();
         assert_eq!(r, 39);
         assert_eq!(hp, 166);
         assert_eq!(power, 12);
         assert_eq!(r as i64 * hp, 6474);
+        let end_state = get_test_battle_with_hps(finished, &[14, 152]);
+        assert_eq!(get_characters(&battle), get_characters(&end_state));
 
         let next = r"
 #########
@@ -791,11 +825,24 @@ mod tests {
 #.....G.#
 #########";
 
+        let finished = r"
+#########
+#.......#
+#.E.#...#
+#..##...#
+#...##..#
+#...#...#
+#.......#
+#.......#
+#########";
+
         let mut battle = get_test_battle(next);
         let (r, hp, power) = battle.save_the_elves();
         assert_eq!(r, 30);
         assert_eq!(hp, 38);
         assert_eq!(power, 34);
         assert_eq!(r as i64 * hp, 1140);
+        let end_state = get_test_battle_with_hps(finished, &[38]);
+        assert_eq!(get_characters(&battle), get_characters(&end_state));
     }
 }
