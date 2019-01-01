@@ -13,6 +13,7 @@ lazy_static = "1.2"
 regex = "1"
 nom = "4.1"
 combine = "3.6.3"
+text_io = "0.1.7"
 
 [[bin]]
 name = "day1"
@@ -73,3 +74,7 @@ path = "src/day14/main.rs"
 [[bin]]
 name = "day15"
 path = "src/day15/main.rs"
+
+[[bin]]
+name = "day16"
+path = "src/day16/main.rs"
