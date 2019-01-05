@@ -283,7 +283,7 @@ impl std::fmt::Display for Railway {
 
         for row in rows {
             let s: String = row.into_iter().collect();
-            writeln!(f, "{}", s.trim_right())?;
+            writeln!(f, "{}", s.trim_end())?;
         }
 
         Ok(())
