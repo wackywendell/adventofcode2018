@@ -43,10 +43,10 @@ impl FromStr for Point {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref re: regex::Regex = regex::Regex::new(r"^(\d+),\s*(\d+)$").unwrap();
+            static ref RE: regex::Regex = regex::Regex::new(r"^(\d+),\s*(\d+)$").unwrap();
         }
 
-        let c = re.captures(s).ok_or_else(|| ParseError::from_line(&s))?;
+        let c = RE.captures(s).ok_or_else(|| ParseError::from_line(&s))?;
 
         let x = c
             .get(1)

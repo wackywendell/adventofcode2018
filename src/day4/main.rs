@@ -82,14 +82,14 @@ impl FromStr for LogLine {
     type Err = LogLineError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref re_shift: regex::Regex = regex::Regex::new(
+            static ref RE_SHIFT: regex::Regex = regex::Regex::new(
                 r"^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\] Guard #(\d+) begins shift$"
             )
             .unwrap();
-            static ref re_falls_asleep: regex::Regex =
+            static ref RE_FALLS_ASLEEP: regex::Regex =
                 regex::Regex::new(r"^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\] falls asleep$")
                     .unwrap();
-            static ref re_wakeup: regex::Regex =
+            static ref RE_WAKEUP: regex::Regex =
                 regex::Regex::new(r"^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\] wakes up$")
                     .unwrap();
         }
@@ -112,12 +112,12 @@ impl FromStr for LogLine {
             }
         };
 
-        if let Some(c) = re_shift.captures(s) {
+        if let Some(c) = RE_SHIFT.captures(s) {
             let guard_id = to_u16(6, &c);
             Ok(LogLine::Guard(to_date(&c), guard_id))
-        } else if let Some(c) = re_falls_asleep.captures(s) {
+        } else if let Some(c) = RE_FALLS_ASLEEP.captures(s) {
             Ok(LogLine::FallAsleep(to_date(&c)))
-        } else if let Some(c) = re_wakeup.captures(s) {
+        } else if let Some(c) = RE_WAKEUP.captures(s) {
             Ok(LogLine::WakeUp(to_date(&c)))
         } else {
             Err(LogLineError {})

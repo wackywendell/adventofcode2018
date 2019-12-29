@@ -403,7 +403,7 @@ fn main() -> Result<(), failure::Error> {
         hp * rounds as i64
     );
 
-    let mut battle = initial.clone();
+    let mut battle = initial;
     let (rounds, hp, elf_power) = battle.save_the_elves();
 
     println!(

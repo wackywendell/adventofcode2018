@@ -161,11 +161,11 @@ struct Claim {
 impl Claim {
     fn from_line(line: &str) -> Claim {
         lazy_static! {
-            static ref re: regex::Regex =
+            static ref RE: regex::Regex =
                 regex::Regex::new(r"^#(\d+) @ (\d+),(\d+): (\d+)x(\d+)$").unwrap();
         }
 
-        let captures = re.captures(line).expect("Match not found");
+        let captures = RE.captures(line).expect("Match not found");
 
         let parse = |i: usize| -> i16 {
             captures
