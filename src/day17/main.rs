@@ -41,8 +41,15 @@ impl Wall {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Walls {
-    verticals: HashMap<i64, Vec<RangeInclusive<i64>>>,
-    horizontals: HashMap<i64, Vec<RangeInclusive<i64>>>,
+    filled: HashSet<(i64, i64)>,
+    top: i64,
+    bottom: i64,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum Edge {
+    Wall,
+    FreeFall,
 }
 
 impl Walls {
@@ -51,21 +58,123 @@ impl Walls {
             lines.drain(..).map(|l| Wall::parse_line(&l)).collect();
         let wall_vec: Vec<Wall> = some_walls?;
 
-        let mut walls: Walls = Default::default();
+        let mut filled = HashSet::new();
+        let (mut top, mut bottom) = (None, None);
         for wall in wall_vec {
-            let e = match wall.direction {
-                Direction::Horizontal => walls.horizontals.entry(wall.loc),
-                Direction::Vertical => walls.verticals.entry(wall.loc),
-            };
-            let v = e.or_default();
-            v.push(wall.range);
-            v.sort_unstable_by_key(|r| (*r.start(), *r.end()));
+            for second in wall.range {
+                let (px, py) = match wall.direction {
+                    Direction::Horizontal => (wall.loc, second),
+                    Direction::Vertical => (second, wall.loc),
+                };
+                top = Some(match top {
+                    None => py,
+                    Some(topx) => std::cmp::min(topx, py),
+                });
+                bottom = Some(match bottom {
+                    None => py,
+                    Some(bottomx) => std::cmp::max(bottomx, py),
+                });
+                filled.insert((px, py));
+            }
         }
 
-        Ok(walls)
+        Ok(Walls {
+            filled,
+            top: top.unwrap(),
+            bottom: bottom.unwrap(),
+        })
     }
 
-    fn find_bottom(&self, x: i64, y: i64) -> Option<Wall> {}
+    fn find_bottom(&self, x: i64, y: i64) -> Option<i64> {
+        for cy in y + 1..=self.bottom {
+            if self.filled.contains(&(x, cy)) {
+                return Some(y - 1);
+            }
+        }
+
+        None
+    }
+
+    fn find_sides(&self, x: i64, y: i64) -> ((Edge, i64), (Edge, i64)) {
+        let left: (Edge, i64);
+        let right: (Edge, i64);
+
+        let mut cx = x;
+        loop {
+            if !self.filled.contains(&(cx, y + 1)) {
+                left = (Edge::FreeFall, cx);
+                break;
+            }
+            if self.filled.contains(&(cx - 1, y)) {
+                left = (Edge::Wall, cx);
+                break;
+            }
+            cx -= 1;
+        }
+
+        cx = x;
+        loop {
+            if !self.filled.contains(&(cx, y + 1)) {
+                right = (Edge::FreeFall, cx);
+                break;
+            }
+            if self.filled.contains(&(cx + 1, y)) {
+                right = (Edge::Wall, cx);
+                break;
+            }
+            cx += 1;
+        }
+
+        (left, right)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Water {
+    Flowing,
+    Stable,
+}
+
+pub struct FlowingWater {
+    water: HashMap<(i64, i64), Water>,
+    walls: Walls,
+    queue: VecDeque<(i64, i64)>,
+}
+
+impl FlowingWater {
+    fn new(walls: Walls, start: (i64, i64)) -> Self {
+        let mut water: HashMap<(i64, i64), Water> = HashMap::new();
+        if start.0 >= walls.top {
+            water.insert(start, Water::Flowing);
+        }
+        let mut queue = VecDeque::new();
+        queue.push_back(start);
+
+        FlowingWater {
+            water,
+            walls,
+            queue,
+        }
+    }
+
+    fn step(&mut self) -> bool {
+        let (x, y) = match self.queue.pop_front() {
+            Some(v) => v,
+            None => return false,
+        };
+
+        let bottom = match self.walls.find_bottom(x, y) {
+            None => {
+                for cy in (y + 1..=self.walls.bottom).rev() {
+                    self.water.insert((x, cy), Water::Flowing);
+                }
+                return true;
+            }
+            Some(b) => b,
+        };
+
+        return true;
+    }
 }
 
 fn main() -> Result<(), failure::Error> {
