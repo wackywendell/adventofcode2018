@@ -44,6 +44,8 @@ struct Walls {
     filled: HashSet<(i64, i64)>,
     top: i64,
     bottom: i64,
+    left: i64,
+    right: i64,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -53,13 +55,27 @@ enum Edge {
 }
 
 impl Walls {
-    fn parse_lines(lines: &mut VecDeque<String>) -> Result<Walls, failure::Error> {
-        let some_walls: Result<Vec<Wall>, failure::Error> =
-            lines.drain(..).map(|l| Wall::parse_line(&l)).collect();
+    fn parse_lines<I, S>(lines: I) -> Result<Walls, failure::Error>
+    where
+        S: AsRef<str>,
+        I: IntoIterator<Item = S>,
+    {
+        let some_walls: Result<Vec<Wall>, failure::Error> = lines
+            .into_iter()
+            .filter_map(|l| {
+                let trimmed = l.as_ref().trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(Wall::parse_line(trimmed))
+                }
+            })
+            .collect();
         let wall_vec: Vec<Wall> = some_walls?;
 
         let mut filled = HashSet::new();
         let (mut top, mut bottom) = (None, None);
+        let (mut left, mut right) = (None, None);
         for wall in wall_vec {
             for second in wall.range {
                 let (px, py) = match wall.direction {
@@ -74,6 +90,14 @@ impl Walls {
                     None => py,
                     Some(bottomx) => std::cmp::max(bottomx, py),
                 });
+                left = Some(match left {
+                    None => px,
+                    Some(leftx) => std::cmp::min(leftx, px),
+                });
+                right = Some(match right {
+                    None => px,
+                    Some(rightx) => std::cmp::max(rightx, px),
+                });
                 filled.insert((px, py));
             }
         }
@@ -82,50 +106,27 @@ impl Walls {
             filled,
             top: top.unwrap(),
             bottom: bottom.unwrap(),
+            left: left.unwrap(),
+            right: right.unwrap(),
         })
     }
 
-    fn find_bottom(&self, x: i64, y: i64) -> Option<i64> {
-        for cy in y + 1..=self.bottom {
-            if self.filled.contains(&(x, cy)) {
-                return Some(y - 1);
-            }
+    fn to_bytes(&self) -> Vec<Vec<u8>> {
+        let s: Vec<u8> = std::iter::repeat(b'.')
+            .take(((self.right + 1) - (self.left - 1) + 1) as usize)
+            .collect();
+
+        let mut lines: Vec<Vec<u8>> = std::iter::repeat(s)
+            .take((self.bottom + 1) as usize)
+            .collect();
+
+        for &(x, y) in &self.filled {
+            let rel_y = y as usize;
+            let rel_x = (x - self.left + 1) as usize;
+            lines[rel_y][rel_x] = b'#';
         }
 
-        None
-    }
-
-    fn find_sides(&self, x: i64, y: i64) -> ((Edge, i64), (Edge, i64)) {
-        let left: (Edge, i64);
-        let right: (Edge, i64);
-
-        let mut cx = x;
-        loop {
-            if !self.filled.contains(&(cx, y + 1)) {
-                left = (Edge::FreeFall, cx);
-                break;
-            }
-            if self.filled.contains(&(cx - 1, y)) {
-                left = (Edge::Wall, cx);
-                break;
-            }
-            cx -= 1;
-        }
-
-        cx = x;
-        loop {
-            if !self.filled.contains(&(cx, y + 1)) {
-                right = (Edge::FreeFall, cx);
-                break;
-            }
-            if self.filled.contains(&(cx + 1, y)) {
-                right = (Edge::Wall, cx);
-                break;
-            }
-            cx += 1;
-        }
-
-        (left, right)
+        lines
     }
 }
 
@@ -139,6 +140,12 @@ pub struct FlowingWater {
     water: HashMap<(i64, i64), Water>,
     walls: Walls,
     queue: VecDeque<(i64, i64)>,
+}
+
+pub struct Progress {
+    pub bottom: i64,
+    pub lowest: i64,
+    pub waters: Vec<i64>,
 }
 
 impl FlowingWater {
@@ -157,14 +164,78 @@ impl FlowingWater {
         }
     }
 
+    pub fn progress(&self) {
+        let mut waters: Vec<(i64, i64)> = self.queue.iter().map(|&t| t).collect();
+        waters.sort_by_key(|&(x, y)| (y, x));
+    }
+
+    fn find_bottom(&self, x: i64, y: i64) -> Option<i64> {
+        for cy in y + 1..=self.walls.bottom {
+            if self.water.get(&(x, cy)) == Some(&Water::Stable) {
+                return Some(cy - 1);
+            }
+            if self.walls.filled.contains(&(x, cy)) {
+                return Some(cy - 1);
+            }
+        }
+
+        None
+    }
+
+    fn find_sides(&self, x: i64, y: i64) -> ((Edge, i64), (Edge, i64)) {
+        let left: (Edge, i64);
+        let right: (Edge, i64);
+
+        let mut cx = x;
+        loop {
+            let below = (cx, y + 1);
+            if self.water.get(&below) != Some(&Water::Stable) && !self.walls.filled.contains(&below)
+            {
+                // No stable water or wall (floor) underneath, so its a freefall edge
+                left = (Edge::FreeFall, cx);
+                break;
+            }
+            if self.walls.filled.contains(&(cx - 1, y)) {
+                left = (Edge::Wall, cx);
+                break;
+            }
+            cx -= 1;
+        }
+
+        cx = x;
+        loop {
+            let below = (cx, y + 1);
+            if self.water.get(&below) != Some(&Water::Stable) && !self.walls.filled.contains(&below)
+            {
+                right = (Edge::FreeFall, cx);
+                break;
+            }
+            if self.walls.filled.contains(&(cx + 1, y)) {
+                right = (Edge::Wall, cx);
+                break;
+            }
+            cx += 1;
+        }
+
+        (left, right)
+    }
+
     fn step(&mut self) -> bool {
         let (x, y) = match self.queue.pop_front() {
             Some(v) => v,
             None => return false,
         };
 
-        let bottom = match self.walls.find_bottom(x, y) {
+        // TODO: find_bottom should also check for "stable" water
+        let bottom = match self.find_bottom(x, y) {
             None => {
+                // println!(
+                //     "No bottom found, inserting water from ({}, {}) to ({}, {})",
+                //     x,
+                //     y + 1,
+                //     x,
+                //     self.walls.bottom,
+                // );
                 for cy in (y + 1..=self.walls.bottom).rev() {
                     self.water.insert((x, cy), Water::Flowing);
                 }
@@ -173,7 +244,97 @@ impl FlowingWater {
             Some(b) => b,
         };
 
-        return true;
+        // println!("Bottom found: ({}, {}) -> ({}, {})", x, y, x, bottom);
+
+        for cy in (y + 1..=bottom).rev() {
+            self.water.insert((x, cy), Water::Flowing);
+        }
+
+        let sides = self.find_sides(x, bottom);
+        if let ((Edge::Wall, lx), (Edge::Wall, rx)) = sides {
+            // println!("       found double wall");
+            for sx in (lx..=rx).rev() {
+                self.water.insert((sx, bottom), Water::Stable);
+            }
+            self.queue.push_back((x, bottom - 1));
+            return true;
+        }
+
+        let ((left_edge, lx), (right_edge, rx)) = sides;
+        // println!(
+        //     "       found: {:?}: {}, {:?}: {}",
+        //     left_edge, lx, right_edge, rx
+        // );
+        for sx in lx..=rx {
+            self.water.insert((sx, bottom), Water::Flowing);
+        }
+
+        match left_edge {
+            Edge::Wall => {}
+            Edge::FreeFall => {
+                // println!("Pushing left edge ({}, {})", lx, bottom);
+                self.queue.push_back((lx, bottom));
+            }
+        }
+
+        if (left_edge, lx) == (right_edge, rx) {
+            // TODO: Panic?
+            return true;
+        }
+
+        match right_edge {
+            Edge::Wall => {}
+            Edge::FreeFall => {
+                self.queue.push_back((rx, bottom));
+            }
+        }
+
+        true
+    }
+
+    fn to_bytes(&self) -> Vec<Vec<u8>> {
+        let mut lines = self.walls.to_bytes();
+
+        for (&(x, y), water) in &self.water {
+            assert!(x >= self.walls.left - 1);
+            assert!(x <= self.walls.right + 1);
+            assert!(y >= 0, "{} >= {}", y, self.walls.top);
+            let rel_y = y as usize;
+            let rel_x = (x - self.walls.left + 1) as usize;
+
+            let c: char = match water {
+                Water::Flowing => '|',
+                Water::Stable => '~',
+            };
+            lines[rel_y][rel_x] = c as u8;
+        }
+
+        lines
+    }
+
+    fn print(&self) {
+        for l in self.to_bytes() {
+            let s = String::from_utf8(l).unwrap();
+            println!("{}", s);
+        }
+    }
+
+    /// water_count returns a count of (stable, flowing) water squares
+    fn water_count(&self) -> (i64, i64) {
+        let (mut stable, mut flowing) = (0, 0);
+
+        for (&(_, y), water) in &self.water {
+            if y < self.walls.top {
+                // These aren't counted
+                continue;
+            }
+            match water {
+                Water::Flowing => flowing += 1,
+                Water::Stable => stable += 1,
+            }
+        }
+
+        (stable, flowing)
     }
 }
 
@@ -198,5 +359,89 @@ fn main() -> Result<(), failure::Error> {
     let mut lines: VecDeque<String> = some_lines?;
     let walls = Walls::parse_lines(&mut lines)?;
 
+    let mut flow = FlowingWater::new(walls, (500, 0));
+    println!("-- Flowed 0 --");
+    flow.print();
+
+    let mut steps = 0;
+    while flow.step() {
+        steps += 1;
+        if steps % 100 == 0 {
+            println!("-- Flowed {} --", steps);
+            flow.print();
+        }
+
+        if steps > 10000 {
+            break;
+        }
+    }
+
+    let (s, f) = flow.water_count();
+    println!("Finished after {} steps.", steps);
+    println!("{} stable + {} flowing = {} water squares", s, f, s + f);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_INPUT: &str = r#"
+x=495, y=2..7
+y=7, x=495..501
+x=501, y=3..7
+x=498, y=2..4
+x=506, y=1..2
+x=498, y=10..13
+x=504, y=10..13
+y=13, x=498..504"#;
+
+    fn get_test_walls(s: &str) -> Result<Walls, failure::Error> {
+        let lines: Vec<&str> = s.split('\n').collect();
+        Walls::parse_lines(lines)
+    }
+
+    #[test]
+    fn test_parse() {
+        println!("Getting test input...");
+        let maybe_walls = get_test_walls(TEST_INPUT);
+        let walls = match maybe_walls {
+            Err(e) => {
+                println!("Error: {}", e);
+                panic!("Error getting test input: {}", e);
+            }
+            Ok(w) => w,
+        };
+        println!("Creating flow...");
+        let flow = FlowingWater::new(walls, (500, 0));
+        println!("Start:");
+        flow.print();
+    }
+
+    #[test]
+    fn test_run() {
+        println!("Getting test input...");
+        let walls = get_test_walls(TEST_INPUT).unwrap();
+        println!("Creating flow...");
+        let mut flow = FlowingWater::new(walls, (500, 0));
+
+        println!("Start:");
+        flow.print();
+        let mut i = 0;
+        while flow.step() {
+            println!();
+            println!();
+            flow.print();
+
+            i += 1;
+            if i > 12 {
+                panic!("Didn't finish in 10 steps");
+            }
+        }
+
+        let (s, f) = flow.water_count();
+
+        assert_eq!(28, f);
+        assert_eq!(29, s);
+    }
 }
