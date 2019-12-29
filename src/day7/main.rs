@@ -24,7 +24,7 @@ impl FromStr for Dependency {
     type Err = DependencyError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref re_shift: regex::Regex =
+            static ref RE_SHIFT: regex::Regex =
                 regex::Regex::new(r"^Step (\w+) must be finished before step (\w+) can begin.$")
                     .unwrap();
         }
@@ -37,7 +37,7 @@ impl FromStr for Dependency {
                 .unwrap_or_else(|_| panic!("Couldn't parse group {}", i))
         };
 
-        match re_shift.captures(s) {
+        match RE_SHIFT.captures(s) {
             Some(ref c) => Ok(Dependency {
                 child: to_string(2, c),
                 parent: to_string(1, c),

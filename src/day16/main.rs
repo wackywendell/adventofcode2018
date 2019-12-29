@@ -139,7 +139,7 @@ impl Triplet {
     }
 }
 
-#[allow(clippy::cyclomatic_complexity)]
+#[allow(clippy::cognitive_complexity)]
 fn parse_triplet(lines: &mut VecDeque<String>) -> Result<Triplet, failure::Error> {
     let l0 = match lines.front() {
         None => {

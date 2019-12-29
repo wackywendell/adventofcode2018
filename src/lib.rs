@@ -40,7 +40,7 @@ where
 {
     map_res!(
         input,
-        recognize!(pair!(opt!(alt!(tag_s!("+") | tag_s!("-"))), digit)),
+        recognize!(pair!(opt!(alt!(tag!("+") | tag!("-"))), digit)),
         |s: T| FromStr::from_str(s.as_ref())
     )
 }
@@ -63,5 +63,4 @@ mod tests {
         println!("Parsed: {:?}", parsed);
         assert_eq!(parsed, Ok((CompleteStr(""), 120)));
     }
-
 }

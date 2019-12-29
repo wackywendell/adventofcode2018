@@ -268,7 +268,7 @@ impl PotAdvancer {
         self.pots.advance();
         let state = self.pots.state.clone();
 
-        let (start_ix, generation): (isize, isize) = match self.seen.entry(state.pots.clone()) {
+        let (start_ix, generation): (isize, isize) = match self.seen.entry(state.pots) {
             std::collections::hash_map::Entry::Vacant(v) => {
                 v.insert((self.pots.state.start, self.index));
                 self.repeats.push(self.pots.state.clone());
