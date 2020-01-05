@@ -52,6 +52,7 @@ struct Walls {
 enum Edge {
     Wall,
     FreeFall,
+    Water,
 }
 
 impl Walls {
@@ -140,12 +141,13 @@ pub struct FlowingWater {
     water: HashMap<(i64, i64), Water>,
     walls: Walls,
     queue: VecDeque<(i64, i64)>,
+    seen: HashSet<(i64, i64)>,
 }
 
 pub struct Progress {
     pub bottom: i64,
     pub lowest: i64,
-    pub waters: Vec<i64>,
+    pub waters: Vec<(i64, i64)>,
 }
 
 impl FlowingWater {
@@ -161,21 +163,31 @@ impl FlowingWater {
             water,
             walls,
             queue,
+            seen: Default::default(),
         }
     }
 
-    pub fn progress(&self) {
-        let mut waters: Vec<(i64, i64)> = self.queue.iter().map(|&t| t).collect();
+    pub fn progress(&self) -> Progress {
+        let mut waters: Vec<(i64, i64)> = self.queue.iter().copied().collect();
         waters.sort_by_key(|&(x, y)| (y, x));
+        let lowest = self
+            .water
+            .keys()
+            .fold(0, |old, &(_, new)| std::cmp::max(old, new));
+        Progress {
+            bottom: self.walls.bottom,
+            lowest,
+            waters,
+        }
     }
 
-    fn find_bottom(&self, x: i64, y: i64) -> Option<i64> {
+    fn find_bottom(&self, x: i64, y: i64) -> Option<(Edge, i64)> {
         for cy in y + 1..=self.walls.bottom {
             if self.water.get(&(x, cy)) == Some(&Water::Stable) {
-                return Some(cy - 1);
+                return Some((Edge::Water, cy - 1));
             }
             if self.walls.filled.contains(&(x, cy)) {
-                return Some(cy - 1);
+                return Some((Edge::Wall, cy - 1));
             }
         }
 
@@ -226,8 +238,7 @@ impl FlowingWater {
             None => return false,
         };
 
-        // TODO: find_bottom should also check for "stable" water
-        let bottom = match self.find_bottom(x, y) {
+        let (bottom_type, bottom) = match self.find_bottom(x, y) {
             None => {
                 // println!(
                 //     "No bottom found, inserting water from ({}, {}) to ({}, {})",
@@ -243,6 +254,13 @@ impl FlowingWater {
             }
             Some(b) => b,
         };
+
+        if bottom_type == Edge::Water && bottom > y && self.seen.contains(&(x, y)) {
+            println!("Seen ({}, {})", x, y);
+            return true;
+        }
+
+        self.seen.insert((x, y));
 
         // println!("Bottom found: ({}, {}) -> ({}, {})", x, y, x, bottom);
 
@@ -275,6 +293,7 @@ impl FlowingWater {
                 // println!("Pushing left edge ({}, {})", lx, bottom);
                 self.queue.push_back((lx, bottom));
             }
+            Edge::Water => panic!("This shouldn't happen"),
         }
 
         if (left_edge, lx) == (right_edge, rx) {
@@ -287,6 +306,7 @@ impl FlowingWater {
             Edge::FreeFall => {
                 self.queue.push_back((rx, bottom));
             }
+            Edge::Water => panic!("This shouldn't happen"),
         }
 
         true
@@ -338,6 +358,18 @@ impl FlowingWater {
     }
 }
 
+fn print_progress(step: i64, progress: Progress) {
+    println!(
+        "-- Flowed {}: lowest {}, high flow {}, low flow {}, bottom {}, {} remaining",
+        step,
+        progress.lowest,
+        progress.waters.first().unwrap_or(&(0, 0)).0,
+        progress.waters.last().unwrap_or(&(0, 0)).0,
+        progress.bottom,
+        progress.waters.len(),
+    );
+}
+
 fn main() -> Result<(), failure::Error> {
     let matches = App::new("Day 17")
         .arg(
@@ -360,22 +392,25 @@ fn main() -> Result<(), failure::Error> {
     let walls = Walls::parse_lines(&mut lines)?;
 
     let mut flow = FlowingWater::new(walls, (500, 0));
-    println!("-- Flowed 0 --");
+    print_progress(0, flow.progress());
     flow.print();
 
     let mut steps = 0;
     while flow.step() {
         steps += 1;
         if steps % 100 == 0 {
-            println!("-- Flowed {} --", steps);
-            flow.print();
+            print_progress(steps, flow.progress());
+            if steps % 10_000 == 0 {
+                flow.print();
+            }
         }
 
-        if steps > 10000 {
+        if steps > 100_000 {
             break;
         }
     }
 
+    flow.print();
     let (s, f) = flow.water_count();
     println!("Finished after {} steps.", steps);
     println!("{} stable + {} flowing = {} water squares", s, f, s + f);
