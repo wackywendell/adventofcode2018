@@ -69,9 +69,9 @@ impl UnknownInstruction {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Register {
-    values: [Value; 4],
+    values: Vec<Value>,
 }
 
 impl Register {
@@ -111,17 +111,17 @@ impl Register {
 }
 
 pub fn matching_registers(
-    input: Register,
-    output: Register,
+    input: &Register,
+    output: &Register,
     instr: PartialInstruction,
 ) -> Vec<OpCode> {
     let mut matching = Vec::new();
     let PartialInstruction(a, b, c) = instr;
 
     for oc in OpCode::variants() {
-        let mut rs = input;
+        let mut rs = input.clone();
         rs.apply(Instruction(oc, a, b, c));
-        if rs == output {
+        if &rs == output {
             matching.push(oc);
         }
     }
@@ -129,11 +129,11 @@ pub fn matching_registers(
     matching
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
 struct Triplet(Register, UnknownInstruction, Register);
 
 impl Triplet {
-    pub fn matching_codes(self) -> Vec<OpCode> {
+    pub fn matching_codes(&self) -> Vec<OpCode> {
         let Triplet(input, instr, output) = self;
         matching_registers(input, output, instr.partial())
     }
@@ -151,7 +151,7 @@ fn parse_triplet(lines: &mut VecDeque<String>) -> Result<Triplet, failure::Error
     let (a, b, c, d): (Value, Value, Value, Value);
     try_scan!(l0.bytes() => "Before: [{}, {}, {}, {}]", a,b,c,d);
     let r1 = Register {
-        values: [a, b, c, d],
+        values: vec![a, b, c, d],
     };
 
     let _ = lines.pop_front();
@@ -163,7 +163,7 @@ fn parse_triplet(lines: &mut VecDeque<String>) -> Result<Triplet, failure::Error
     let (a2, b2, c2, d2): (Value, Value, Value, Value);
     try_scan!(l2.bytes() => "After:  [{}, {}, {}, {}]", a2,b2,c2,d2);
     let r2 = Register {
-        values: [a2, b2, c2, d2],
+        values: vec![a2, b2, c2, d2],
     };
     let _ = lines.pop_front().unwrap();
 
@@ -302,7 +302,7 @@ fn main() -> Result<(), failure::Error> {
     );
 
     let mut r = Register {
-        values: [0, 0, 0, 0],
+        values: vec![0, 0, 0, 0],
     };
     for unknown in instructions {
         let instr = code_map.resolve(unknown);
@@ -321,13 +321,13 @@ mod tests {
     #[test]
     fn test_instructions() {
         let input = Register {
-            values: [3, 2, 1, 1],
+            values: vec![3, 2, 1, 1],
         };
         let output = Register {
-            values: [3, 2, 2, 1],
+            values: vec![3, 2, 2, 1],
         };
 
-        let ops = matching_registers(input, output, PartialInstruction(2, 1, 2));
+        let ops = matching_registers(&input, &output, PartialInstruction(2, 1, 2));
 
         assert_eq!(ops, vec![OpCode::AddI, OpCode::MulR, OpCode::SetI]);
     }
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn test_eq() {
         let mut reg = Register {
-            values: [1, 0, 1, 3],
+            values: vec![1, 0, 1, 3],
         };
         reg.apply(Instruction(OpCode::EqRR, 2, 3, 3));
 
