@@ -15,6 +15,10 @@ nom = "4.1"
 combine = "3.6.3"
 text_io = "0.1.7"
 
+[lib]
+name = "aoc"
+path = "src/lib.rs"
+
 [[bin]]
 name = "day1"
 path = "src/day1/main.rs"

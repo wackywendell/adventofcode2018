@@ -1,9 +1,9 @@
 #![warn(clippy::all)]
 
-#[macro_use]
-extern crate nom;
+use aoc::parse::{convert_err, parse_integer};
 
 use clap::{App, Arg};
+use nom::{do_parse, named, tag, ws};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -18,13 +18,13 @@ struct Star {
 named!(star_line_s<&str, Star>,
     do_parse!(
         tag!("position=<") >>
-        x: ws!(aoc::parse_integer) >>
+        x: ws!(parse_integer) >>
         tag!(",") >>
-        y: ws!(aoc::parse_integer) >>
+        y: ws!(parse_integer) >>
         tag!("> velocity=<") >>
-        vx: ws!(aoc::parse_integer) >>
+        vx: ws!(parse_integer) >>
         tag!(",") >>
-        vy: ws!(aoc::parse_integer) >>
+        vy: ws!(parse_integer) >>
         tag!(">") >>
         (Star{position: (x, y), velocity: (vx,vy)})
     )
@@ -46,7 +46,7 @@ impl Stars {
                 let p: Result<Star, failure::Error> = match l {
                     Ok(s) => star_line_s(s.as_ref())
                         .map(|(_, s)| s)
-                        .map_err(|e| aoc::convert_err(e).into()),
+                        .map_err(|e| convert_err(e).into()),
                     Err(err) => Err(err.into()),
                 };
                 p
