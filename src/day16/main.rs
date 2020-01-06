@@ -1,5 +1,7 @@
 #![warn(clippy::all)]
 
+use aoc::device::{Instruction, OpCode, Register, Value};
+
 use clap::{App, Arg};
 use text_io::try_scan;
 
@@ -7,54 +9,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-
-type Value = i64;
-
-#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub enum OpCode {
-    AddR,
-    AddI,
-    MulR,
-    MulI,
-    BanR,
-    BanI,
-    BorR,
-    BorI,
-    SetR,
-    SetI,
-    GtIR,
-    GtRI,
-    GtRR,
-    EqIR,
-    EqRI,
-    EqRR,
-}
-
-impl OpCode {
-    pub fn variants() -> impl IntoIterator<Item = Self> {
-        vec![
-            OpCode::AddR,
-            OpCode::AddI,
-            OpCode::MulR,
-            OpCode::MulI,
-            OpCode::BanR,
-            OpCode::BanI,
-            OpCode::BorR,
-            OpCode::BorI,
-            OpCode::SetR,
-            OpCode::SetI,
-            OpCode::GtIR,
-            OpCode::GtRI,
-            OpCode::GtRR,
-            OpCode::EqIR,
-            OpCode::EqRI,
-            OpCode::EqRR,
-        ]
-    }
-}
-
-#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Instruction(OpCode, usize, usize, usize);
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub struct PartialInstruction(usize, usize, usize);
@@ -66,47 +20,6 @@ impl UnknownInstruction {
     pub fn partial(self) -> PartialInstruction {
         let UnknownInstruction(_, a, b, c) = self;
         PartialInstruction(a, b, c)
-    }
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Register {
-    values: Vec<Value>,
-}
-
-impl Register {
-    pub fn apply(&mut self, instr: Instruction) -> Value {
-        let Instruction(op, a, b, c) = instr;
-
-        fn int_bool(b: bool) -> Value {
-            if b {
-                1
-            } else {
-                0
-            }
-        }
-
-        let out_value = match op {
-            OpCode::AddR => self.values[a] + self.values[b],
-            OpCode::AddI => self.values[a] + b as Value,
-            OpCode::MulR => self.values[a] * self.values[b],
-            OpCode::MulI => self.values[a] * b as Value,
-            OpCode::BanR => self.values[a] & self.values[b],
-            OpCode::BanI => self.values[a] & b as Value,
-            OpCode::BorR => self.values[a] | self.values[b],
-            OpCode::BorI => self.values[a] | b as Value,
-            OpCode::SetR => self.values[a],
-            OpCode::SetI => a as Value,
-            OpCode::GtIR => int_bool(a as i64 > self.values[b]),
-            OpCode::GtRI => int_bool(self.values[a] > b as Value),
-            OpCode::GtRR => int_bool(self.values[a] > self.values[b]),
-            OpCode::EqIR => int_bool(a as i64 == self.values[b]),
-            OpCode::EqRI => int_bool(self.values[a] == b as Value),
-            OpCode::EqRR => int_bool(self.values[a] == self.values[b]),
-        };
-
-        self.values[c] = out_value;
-        out_value
     }
 }
 
