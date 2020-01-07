@@ -43,3 +43,72 @@ In detail, when running this program, the following events occur:
     The instruction pointer is 6, so the instruction seti 9 0 5 stores 9 into register 5. The instruction pointer is incremented, causing it to point outside the program, and so the program ends.
 
 What value is left in register 0 when the background process halts?
+
+--- Part Two ---
+
+A new background process immediately spins up in its place. It appears identical, but on closer inspection, you notice that this time, register 0 started with the value 1.
+
+What value is left in register 0 when this new background process halts?
+
+...
+
+```
+93 Pointer 3 (Some(Instruction(MulR, 2, 5, 3))), [0, 10551311, 1, 0, 2, 10]
+x3 = x2 * x5
+94 Pointer 4 (Some(Instruction(EqRR, 3, 1, 3))), [0, 10551311, 1, 10, 3, 10]
+x3 = (x3 == x1)
+95 Pointer 5 (Some(Instruction(AddR, 3, 4, 4))), [0, 10551311, 1, 0, 4, 10]
+x4 = (x3 + x4)
+96 Pointer 6 (Some(Instruction(AddI, 4, 1, 4))), [0, 10551311, 1, 0, 5, 10]
+x4 = x4 + 1
+97 Pointer 8 (Some(Instruction(AddI, 5, 1, 5))), [0, 10551311, 1, 0, 7, 10]
+x5 = x5 + 1
+98 Pointer 9 (Some(Instruction(GtRR, 5, 1, 3))), [0, 10551311, 1, 0, 8, 11]
+x3 = (x5 > x1)
+99 Pointer 10 (Some(Instruction(AddR, 4, 3, 4))), [0, 10551311, 1, 0, 9, 11]
+x4 = x4 + x3
+100 Pointer 11 (Some(Instruction(SetI, 2, 7, 4))), [0, 10551311, 1, 0, 10, 11]
+x4 = 2
+```
+
+```
+88 Pointer 3 (Some(Instruction(MulR, 2, 5, 3))), [1, 10551311, 2, 0, 2, 10]
+x3 = x2 * x5
+89 Pointer 4 (Some(Instruction(EqRR, 3, 1, 3))), [1, 10551311, 2, 20, 3, 10]
+x3 = (x3 == x1)
+90 Pointer 5 (Some(Instruction(AddR, 3, 4, 4))), [1, 10551311, 2, 0, 4, 10]
+x4 = (x3 + x4)
+91 Pointer 6 (Some(Instruction(AddI, 4, 1, 4))), [1, 10551311, 2, 0, 5, 10]
+x4 = x4 + 1
+92 Pointer 8 (Some(Instruction(AddI, 5, 1, 5))), [1, 10551311, 2, 0, 7, 10]
+x5 = x5 + 1
+93 Pointer 9 (Some(Instruction(GtRR, 5, 1, 3))), [1, 10551311, 2, 0, 8, 11]
+x3 = (x5 > x1)
+94 Pointer 10 (Some(Instruction(AddR, 4, 3, 4))), [1, 10551311, 2, 0, 9, 11]
+x4 = x4 + x3
+95 Pointer 11 (Some(Instruction(SetI, 2, 7, 4))), [1, 10551311, 2, 0, 10, 11]
+x4 = 2
+```
+
+```
+x3 = x2 * x5
+x3 = (x3 == x1)
+x4 = (x4 + x3)
+x4 = x4 + 1
+x5 = x5 + 1
+x3 = (x5 > x1)
+x4 = x4 + x3
+x4 = 2
+
+
+x3 = x2 * x5
+x4 = x4 + x3 + 1
+x5 = x5 + 1
+x3 = (x5 > x1)
+x4 = x4 + x3
+x4 = 2
+
+```
+
+10576223 is too low
+21127535

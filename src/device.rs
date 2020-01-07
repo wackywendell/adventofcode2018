@@ -21,6 +21,28 @@ pub enum OpCode {
 }
 
 impl OpCode {
+    pub fn from_string(s: &str) -> Option<Self> {
+        match s {
+            "addr" => Some(OpCode::AddR),
+            "addi" => Some(OpCode::AddI),
+            "mulr" => Some(OpCode::MulR),
+            "muli" => Some(OpCode::MulI),
+            "banr" => Some(OpCode::BanR),
+            "bani" => Some(OpCode::BanI),
+            "borr" => Some(OpCode::BorR),
+            "bori" => Some(OpCode::BorI),
+            "setr" => Some(OpCode::SetR),
+            "seti" => Some(OpCode::SetI),
+            "gtir" => Some(OpCode::GtIR),
+            "gtri" => Some(OpCode::GtRI),
+            "gtrr" => Some(OpCode::GtRR),
+            "eqir" => Some(OpCode::EqIR),
+            "eqri" => Some(OpCode::EqRI),
+            "eqrr" => Some(OpCode::EqRR),
+            _ => None,
+        }
+    }
+
     pub fn variants() -> impl IntoIterator<Item = Self> {
         vec![
             OpCode::AddR,
