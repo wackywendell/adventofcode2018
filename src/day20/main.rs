@@ -1,14 +1,14 @@
-use petgraph::Graph;
-
 use clap::{App, Arg};
 
+use std::cmp::max;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::str::FromStr;
 
-use std::cmp::max;
-// use std::str::FromStr;
-
+#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Direction {
     N,
     E,
@@ -16,25 +16,144 @@ pub enum Direction {
     S,
 }
 
-pub enum Node {
-    Direction(Direction),
-    Alternatives,
-    Detours,
+#[derive(Default, Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
+pub struct Room {
+    x: i64,
+    y: i64,
 }
 
-pub struct Route {
-    pub graph: Graph<Node, (), petgraph::Directed>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Building {
+    pub distances: HashMap<Room, i64>,
+    pub connections: HashMap<Room, HashSet<Room>>,
+}
+impl FromStr for Building {
+    type Err = failure::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut distances: HashMap<Room, i64> = HashMap::new();
+        let mut connections: HashMap<Room, HashSet<Room>> = HashMap::new();
+
+        let mut parents: Vec<Room> = Vec::new();
+
+        let mut room: Room = Default::default();
+        distances.insert(room, 0);
+        connections.insert(room, Default::default());
+
+        for (ix, b) in s.bytes().enumerate() {
+            let read_so_far = || std::str::from_utf8(&s.as_bytes()[..=ix]).unwrap();
+            let last = match b {
+                b'^' => {
+                    assert_eq!(distances.len(), 1);
+                    continue;
+                }
+                b'$' => break,
+                b'N' => {
+                    let last = room;
+                    room.y += 1;
+                    last
+                }
+                b'E' => {
+                    let last = room;
+                    room.x += 1;
+                    last
+                }
+                b'W' => {
+                    let last = room;
+                    room.x -= 1;
+                    last
+                }
+                b'S' => {
+                    let last = room;
+                    room.y -= 1;
+                    last
+                }
+                b'(' => {
+                    parents.push(room);
+                    continue;
+                }
+                b'|' => {
+                    room = *parents.last().unwrap();
+                    continue;
+                }
+                b')' => {
+                    room = parents.pop().unwrap();
+                    continue;
+                }
+                _ => panic!("unrecognized character: {}", b),
+            };
+
+            connections.entry(last).or_default().insert(room);
+            connections.entry(room).or_default().insert(last);
+            let dist = distances.get(&last).unwrap() + 1;
+            println!("At {:?}: {}  {}", room, dist, read_so_far());
+            let mut to_update: VecDeque<(Room, i64)> = VecDeque::new();
+            // to_update.push_back((room, dist));
+
+            let old = match distances.entry(room) {
+                Entry::Vacant(v) => {
+                    v.insert(dist);
+                    println!("  Inserted");
+                    continue;
+                }
+                Entry::Occupied(o) => *o.get(),
+            };
+
+            match dist.cmp(&old) {
+                std::cmp::Ordering::Equal => {
+                    println!("  Equal: {}", dist);
+                    continue;
+                }
+                std::cmp::Ordering::Less => {
+                    println!("  Less: {} < {}", dist, old);
+                    to_update.push_back((room, dist));
+                }
+                std::cmp::Ordering::Greater => {
+                    println!("  Greater: {} > {}", dist, old);
+                    for &r in connections.get(&room).iter().flat_map(|&c| c) {
+                        to_update.push_back((r, old + 1));
+                    }
+                }
+            };
+
+            while !to_update.is_empty() {
+                let (room, dist) = to_update.pop_front().unwrap();
+                println!("  Popped {:?}, {}", room, dist);
+
+                match distances.entry(room) {
+                    Entry::Vacant(v) => {
+                        v.insert(dist);
+                        println!("    Vacant");
+                        continue;
+                    }
+                    Entry::Occupied(mut o) => {
+                        let old = o.get_mut();
+                        println!("    Occupied: {}", *old);
+                        if *old <= dist {
+                            continue;
+                        }
+                        println!("    Updating {:?}: {} -> {}", room, old, dist);
+                        *old = dist;
+                        for &r in connections.get(&room).iter().flat_map(|&h| h) {
+                            to_update.push_back((r, *old + 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(Building {
+            distances,
+            connections,
+        })
+    }
 }
 
-// impl FromStr for Route {
-//     type Err = failure::Error;
-
-//     fn from_str(s: &str) -> Result<Self, Self::Err> {
-//         let g: Graph<Node, (), petgraph::Directed> = Graph::default();
-
-//         Ok(Route { graph: g })
-//     }
-// }
+impl Building {
+    pub fn furthest(&self) -> i64 {
+        self.distances.iter().map(|(_, &v)| v).max().unwrap()
+    }
+}
 
 fn furthest_node(s: &str) -> isize {
     let mut furthest_seen = 0isize;
@@ -139,6 +258,9 @@ fn main() -> Result<(), failure::Error> {
 
     println!("Furthest: {}", furthest);
 
+    let b = Building::from_str(line)?;
+    println!("Furthest: {}", b.furthest());
+
     Ok(())
 }
 
@@ -186,5 +308,64 @@ mod tests {
         assert_eq!(furthest_node(s), 6);
         let s = "^WNE(NESW|)SSS$";
         assert_eq!(furthest_node(s), 6);
+    }
+
+    /// Basic examples from the problem
+    #[test]
+    fn test_building_first() {
+        let s = "^WNE$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 3);
+
+        let s = "^ENWWW(NEEE|SSE(EE|N))$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 10);
+
+        let s = "^ENNWSWW(NEWS|)SSSEEN(WNSE|)EE(SWEN|)NNN$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 18);
+    }
+
+    /// More advanced examples from the problem
+    #[test]
+    fn test_building_more() {
+        let s = "^ESSWWN(E|NNENN(EESS(WNSE|)SSS|WWWSSSSE(SW|NNNE)))$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 23);
+
+        let s = "^WSSEESWWWNW(S|NENNEEEENN(ESSSSW(NWSW|SSEN)|WSWWN(E|WWS(E|SS))))$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 31);
+    }
+
+    /// Extra tests I added
+    #[test]
+    fn test_building_extra() {
+        let s = "^WNE(NESW|)$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 5);
+
+        let s = "^WNENES$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 6);
+
+        let s = "^WNE(NESW|)S$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 3);
+        let s = "^WNE(NESW|)SS$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 3);
+        let s = "^WNE(NENSSW|)SS$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 4);
+        let s = "^WNE(NESW|)SSS$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 3);
+        let s = "^WNE(NESW|)SSSS$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 3);
+        let s = "^WNE(NESW|)SSSSS$";
+        let b = Building::from_str(s).unwrap();
+        assert_eq!(b.furthest(), 4);
     }
 }
