@@ -181,6 +181,15 @@ fn main() -> Result<(), failure::Error> {
     let b = Building::from_str(line)?;
     println!("Furthest: {}", b.furthest());
 
+    let mut over1000 = 0;
+    for (_, d) in b.distances {
+        if d >= 1000 {
+            over1000 += 1;
+        }
+    }
+
+    println!("Over 1000: {}", over1000);
+
     Ok(())
 }
 
