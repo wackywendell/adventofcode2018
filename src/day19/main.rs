@@ -1,81 +1,13 @@
 #![warn(clippy::all)]
 
-use aoc::device::{Instruction, OpCode, Register, Value};
+use aoc::device::{parse_instructions, Device};
 
 use clap::{App, Arg};
-use text_io::try_scan;
 
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-
-pub struct Device {
-    pub register: Register,
-    pub bound: usize,
-    pub pointer: usize,
-    pub instructions: Vec<Instruction>,
-}
-
-impl Device {
-    pub fn new(registers: usize, bound: usize, instructions: Vec<Instruction>) -> Self {
-        let values = std::iter::repeat(0 as Value).take(registers).collect();
-        Device {
-            register: Register { values },
-            bound,
-            pointer: 0,
-            instructions,
-        }
-    }
-
-    pub fn apply(&mut self) -> bool {
-        let instruction = match self.instructions.get(self.pointer) {
-            None => return false,
-            Some(&v) => v,
-        };
-        self.register.values[self.bound] = self.pointer as Value;
-        self.register.apply(instruction);
-        self.pointer = self.register.values[self.bound] as usize;
-        self.pointer += 1;
-
-        true
-    }
-}
-
-pub fn parse_instructions<I, S>(lines: I) -> Result<(usize, Vec<Instruction>), failure::Error>
-where
-    S: AsRef<str>,
-    I: IntoIterator<Item = S>,
-{
-    let mut pointer = None;
-    let mut instructions: Vec<Instruction> = Vec::new();
-
-    for l in lines {
-        let l = l.as_ref().trim();
-        if l.is_empty() {
-            continue;
-        }
-
-        if pointer.is_none() {
-            let pointer_value;
-            try_scan!(l.bytes() => "#ip {}", pointer_value);
-            pointer = Some(pointer_value);
-            continue;
-        }
-
-        let (op_str, a, b, c): (String, usize, usize, usize);
-        try_scan!(l.bytes() => "{} {} {} {}", op_str, a, b, c);
-        let maybe_op = OpCode::from_string(&op_str);
-        let op = match maybe_op {
-            None => return Err(failure::format_err!("Unrecognized op {}", op_str)),
-            Some(op) => op,
-        };
-
-        instructions.push(Instruction(op, a, b, c));
-    }
-
-    Ok((pointer.unwrap_or(0), instructions))
-}
 
 fn main() -> Result<(), failure::Error> {
     let matches = App::new("Day 19")
