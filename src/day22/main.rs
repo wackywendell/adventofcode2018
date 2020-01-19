@@ -1,5 +1,7 @@
 #![warn(clippy::all)]
 
+use std::collections::HashMap;
+
 use clap::{App, Arg};
 
 const MODULUS: i64 = 20_183;
@@ -31,35 +33,43 @@ impl Into<char> for Erosion {
     }
 }
 
+pub type Point = (i64, i64);
+
 pub struct Cave {
     depth: i64,
-    target: (i64, i64),
+    target: Point,
 
     geologies: Vec<Vec<i64>>,
 }
 
 impl Cave {
-    pub fn new(depth: i64, target: (i64, i64), calculate_to: (i64, i64)) -> Cave {
-        let mut c = Cave {
+    pub fn new(depth: i64, target: Point) -> Cave {
+        Cave {
             depth,
             target,
             geologies: Vec::new(),
-        };
-
-        c.calculate(calculate_to.0, calculate_to.1);
-
-        c
+        }
     }
 
-    fn erosion_level(&self, x: i64, y: i64) -> i64 {
+    fn erosion_level(&mut self, x: i64, y: i64) -> i64 {
+        // println!("erosion({}, {}); {}", x, y, self.geologies.len());
+        // let rl = self.geologies[x as usize].len();
+        // println!("erosion({}, {}); {}, {}", x, y, self.geologies.len(), rl);
+        // let g = self.geologies[x as usize][y as usize];
+        let g = self.geology(x, y);
+        (g + self.depth) % MODULUS
+    }
+
+    fn unsafe_erosion_level(&mut self, x: i64, y: i64) -> i64 {
         // println!("erosion({}, {}); {}", x, y, self.geologies.len());
         // let rl = self.geologies[x as usize].len();
         // println!("erosion({}, {}); {}, {}", x, y, self.geologies.len(), rl);
         let g = self.geologies[x as usize][y as usize];
+        // let g = self.geology(x, y);
         (g + self.depth) % MODULUS
     }
 
-    pub fn erosion(&self, x: i64, y: i64) -> Erosion {
+    pub fn erosion(&mut self, x: i64, y: i64) -> Erosion {
         match self.erosion_level(x, y) % 3 {
             0 => Erosion::Rocky,
             1 => Erosion::Wet,
@@ -68,7 +78,8 @@ impl Cave {
         }
     }
 
-    fn geology(&self, x: i64, y: i64) -> i64 {
+    fn geology_from_previous(&mut self, x: i64, y: i64) -> i64 {
+        // eprintln!("Calling geology_from_previous({}, {})", x, y);
         if (x, y) == self.target {
             return 0;
         }
@@ -78,46 +89,84 @@ impl Cave {
             return ((x % MODULUS) * 16807) % MODULUS;
         }
 
-        let e1: i64 = self.erosion_level(x - 1, y);
-        let e2: i64 = self.erosion_level(x, y - 1);
+        let e1: i64 = self.unsafe_erosion_level(x - 1, y);
+        let e2: i64 = self.unsafe_erosion_level(x, y - 1);
 
         (e1 * e2) % MODULUS
     }
 
-    fn calculate(&mut self, target_x: i64, target_y: i64) {
-        for x in 0..=target_x {
-            while self.geologies.len() < x as usize + 1 {
-                self.geologies.push(Vec::new());
-            }
-            // let gl = self.geologies.len();
-            // println!("Length: {}, x: {}", gl, x);
+    fn geology(&mut self, target_x: i64, target_y: i64) -> i64 {
+        let xlen = self.geologies.len();
+        let ylen = self.geologies.get(0).map(|v| v.len()).unwrap_or(0);
 
-            for y in 0..=target_y {
-                // println!("calculate at ({}, {})", x, y);
-                let value = self.geology(x, y);
-                let row = self.geologies.get_mut(x as usize).unwrap();
+        if xlen > target_x as usize && ylen > target_y as usize {
+            return self.geologies[target_x as usize][target_y as usize];
+        }
 
-                // println!("calculate at ({}, {}); lengths {}, {}", x, y, gl, row.len());
+        if (target_x, target_y) == self.target {
+            return 0;
+        }
 
-                match row.get_mut(y as usize) {
-                    None => row.push(value),
-                    Some(r) => *r = value,
+        if target_x <= 0 || target_y <= 0 {
+            return self.geology_from_previous(target_x, target_y);
+        }
+
+        eprintln!("Calling geology({}, {})", target_x, target_y);
+
+        // Fill existing rows out to target_y
+        if (ylen as i64) < target_y + 1 {
+            for x in 0..xlen as i64 {
+                // eprintln!("Filling row {} from {}..={}", x, ylen, target_y);
+                for y in (ylen as i64)..=target_y {
+                    let value = self.geology_from_previous(x, y);
+                    // println!(
+                    //     "Adding value at ({}, {})",
+                    //     x,
+                    //     self.geologies[x as usize].len()
+                    // );
+                    self.geologies[x as usize].push(value);
                 }
             }
         }
+
+        let ylen2: i64 = std::cmp::max(ylen as i64, target_y + 1);
+
+        // Fill the rest of the rows
+        for x in (xlen as i64)..=target_x {
+            // eprintln!("Filling new row {} from {}..{}", x, 0, ylen2);
+            self.geologies.push(Vec::with_capacity(ylen + 1));
+            for y in 0..ylen2 {
+                // println!("Adding value at ({}, {})", x, y);
+                let value = self.geology_from_previous(x, y);
+                self.geologies[x as usize].push(value);
+            }
+            // println!(
+            //     "Adding row {} ({})",
+            //     self.geologies.len(),
+            //     self.geologies[x as usize].len(),
+            // );
+        }
+
+        // println!(
+        //     "Expanded: ({}, {}) => ({}, {}) from ({}, {})",
+        //     xlen,
+        //     ylen,
+        //     self.geologies.len(),
+        //     self.geologies[0].len(),
+        //     target_x,
+        //     target_y,
+        // );
+
+        // for (i, row) in self.geologies.iter().enumerate() {
+        //     println!("Row {}: Length {}", i, row.len());
+        // }
+
+        self.geologies[target_x as usize][target_y as usize]
     }
 
-    pub fn risk(&self) -> i64 {
+    pub fn risk(&mut self) -> i64 {
         let mut sum = 0;
         let (target_x, target_y) = self.target;
-
-        if target_x >= self.geologies.len() as i64 {
-            panic!(
-                "Can't reach {} with only {} rows",
-                target_x,
-                self.geologies.len()
-            )
-        }
 
         for x in 0..=target_x {
             for y in 0..=target_y {
@@ -128,6 +177,173 @@ impl Cave {
         }
 
         sum
+    }
+}
+
+#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq)]
+pub enum Tool {
+    Torch,
+    ClimbingGear,
+    Neither,
+}
+
+fn tools(erosion: Erosion) -> [Tool; 2] {
+    match erosion {
+        Erosion::Rocky => [Tool::Torch, Tool::ClimbingGear],
+        Erosion::Wet => [Tool::ClimbingGear, Tool::Neither],
+        Erosion::Narrow => [Tool::Torch, Tool::Neither],
+    }
+}
+
+pub type Time = i64;
+
+pub struct Routes {
+    target: Point,
+    // (location, tool in hand) -> (time taken, previous, previous tool)
+    seen: HashMap<(Point, Tool), (Time, Point, Tool)>,
+    // Time is expected arrival time
+    queue: Vec<(Time, Point, Tool)>,
+    fastest: Option<Time>,
+}
+
+impl Routes {
+    fn heuristic(&self, point: Point, tool: Tool) -> i64 {
+        let distance = (point.0 - self.target.0).abs() + (point.1 - self.target.1).abs();
+        if tool == Tool::Torch {
+            return distance;
+        }
+        distance + 7
+    }
+
+    fn push(&mut self, current: Time, pt: Point, tool: Tool, prev: Point, prev_tool: Tool) {
+        if let Some(t) = self.fastest {
+            if current > t {
+                return;
+            }
+        }
+
+        if let Some(&(existing_time, _, _)) = self.seen.get(&(pt, tool)) {
+            if existing_time <= current {
+                // We've already been here, and just as fast.
+                return;
+            }
+        }
+
+        self.seen.insert((pt, tool), (current, prev, prev_tool));
+
+        let expected: Time = current + self.heuristic(pt, tool);
+        if let Some(t) = self.fastest {
+            if expected > t {
+                return;
+            }
+        }
+        self.queue.push((expected, pt, tool));
+        self.queue.sort_by_key(|&(exp, _, _)| -exp);
+        // println!("New Queue: {:?}", self.queue);
+        // queue.sort_by_key(|(pt, tool)| {
+        //     let h = Routes::heuristic(pt, tl, cave.target);
+        //     let time = seen[(pt, tool)].0;
+        //     h + time;
+        // })
+    }
+
+    pub fn new(cave: &Cave) -> Routes {
+        let mut seen = HashMap::new();
+        let mut queue = Vec::new();
+
+        let start = ((0, 0), Tool::Torch);
+        seen.insert(start, (0, start.0, start.1));
+        queue.push((0, start.0, start.1));
+
+        Routes {
+            target: cave.target,
+            seen,
+            queue,
+            fastest: None,
+        }
+    }
+
+    pub fn step(&mut self, cave: &mut Cave) -> bool {
+        let (_, (x, y), tool) = match self.queue.pop() {
+            None => {
+                return false;
+            }
+            Some(s) => s,
+        };
+
+        let (time, _, _) = self.seen[&((x, y), tool)];
+
+        if (x, y) == self.target && tool == Tool::Torch {
+            let is_faster = self.fastest.map(|f| f > time).unwrap_or(true);
+            if is_faster {
+                println!(
+                    "Found fastest route: {} < {}",
+                    time,
+                    self.fastest.unwrap_or(0)
+                );
+                self.fastest = Some(time);
+            } else {
+                println!(
+                    "Found slower route: {} > {}",
+                    time,
+                    self.fastest.unwrap_or(0)
+                );
+            }
+
+            // We found a route, possibly the fastest route so far,
+            // but there may be an even faster one still out there
+            return true;
+        }
+
+        if let Some(f) = self.fastest {
+            if time > f {
+                // This path takes too long, let's go a different way
+                return true;
+            }
+        }
+
+        let dxys = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+
+        for (dx, dy) in &dxys {
+            let nx = x + dx;
+            if nx < 0 {
+                continue;
+            }
+            let ny = y + dy;
+            if ny < 0 {
+                continue;
+            }
+
+            let erosion = cave.erosion(nx, ny);
+
+            for &next_tool in &tools(erosion) {
+                let mut next_time = time + 1;
+                if next_tool != tool {
+                    next_time += 7;
+                }
+
+                self.push(next_time, (nx, ny), next_tool, (x, y), tool);
+            }
+        }
+
+        true
+    }
+
+    pub fn route(&self) -> Vec<(Time, Point, Tool)> {
+        if self.fastest.is_none() {
+            return vec![];
+        }
+
+        let mut last = (self.target, Tool::Torch);
+        let mut backtracked = Vec::new();
+        while last != ((0, 0), Tool::Torch) {
+            let (t, prev, prev_tool) = self.seen[&last];
+            backtracked.push((t, last.0, last.1));
+            last = (prev, prev_tool);
+        }
+
+        backtracked.reverse();
+        backtracked
     }
 }
 
@@ -170,8 +386,48 @@ fn main() -> Result<(), failure::Error> {
 
     eprintln!("Using depth {}, target ({}, {})", depth, target_x, target_y);
 
-    let c = Cave::new(depth, (target_x, target_y), (target_x + 50, target_y + 50));
+    let mut c = Cave::new(depth, (target_x, target_y));
     println!("Risk: {}", c.risk());
+    c.geology(target_x + 500, target_y + 500);
+
+    let mut routes = Routes::new(&c);
+    let mut step = 0;
+    while routes.step(&mut c) {
+        step += 1;
+        if step % 1_000 == 0 {
+            let &(expected, pt, tool) = routes.queue.last().unwrap();
+            let (time, _, _) = routes.seen.get(&(pt, tool)).unwrap();
+            println!(
+                "Step {}: Seen {}, Queue {}, fastest: {:?}, at ({}, {}) with {:?}; time {} ({} / {})",
+                step,
+                routes.seen.len(),
+                routes.queue.len(),
+                routes.fastest,
+                pt.0,
+                pt.1,
+                tool,
+                expected - time,
+                time,
+                expected,
+            );
+
+            let ql = routes.queue.len();
+            if ql > 10 {
+                let rem = &routes.queue[ql - 10..ql];
+                println!("Remaining: {:?}", rem);
+            }
+        }
+        if step >= 1_000_000 {
+            break;
+        }
+    }
+
+    println!("Fastest route: {}", routes.fastest.unwrap());
+
+    let route = routes.route();
+    for (time, pt, tool) in route {
+        println!("{}: {:?} {:?}", time, pt, tool);
+    }
 
     Ok(())
 }
@@ -229,7 +485,7 @@ M=.|=.|.|=.|=|=.
 
     #[test]
     fn test_cave() {
-        let c = Cave::new(510, (10, 10), (20, 20));
+        let mut c = Cave::new(510, (10, 10));
 
         let rows = get_example_geology();
 
@@ -259,5 +515,32 @@ M=.|=.|.|=.|=|=.
         assert_eq!(sum, 114);
 
         assert_eq!(c.risk(), 114);
+    }
+
+    #[test]
+    fn test_routing() {
+        let mut c = Cave::new(510, (10, 10));
+        let mut routes = Routes::new(&c);
+
+        let mut step = 0;
+        while routes.step(&mut c) {
+            step += 1;
+            println!(
+                "Step {}: Queue {}, fastest: {:?}, next: {:?}",
+                step,
+                routes.queue.len(),
+                routes.fastest,
+                routes.queue.last(),
+            );
+        }
+
+        assert_eq!(routes.fastest, Some(45));
+
+        let route = routes.route();
+        for (time, pt, tool) in route {
+            println!("{}: {:?} {:?}", time, pt, tool);
+        }
+
+        assert_eq!(routes.fastest, Some(20));
     }
 }

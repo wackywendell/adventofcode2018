@@ -343,3 +343,7 @@ What is the fewest number of minutes you can take to reach the target?
 
 46211378 is too high
 46211376 is too high
+
+### Part 2
+
+1088 is too low
