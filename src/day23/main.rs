@@ -1,15 +1,18 @@
 #![warn(clippy::all)]
 
+use std::cmp::{max, min};
+use std::collections::BinaryHeap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::ops::Sub;
 
 use clap::{App, Arg};
 
 use text_io::try_scan;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-struct Point(i64, i64, i64);
+pub struct Point(i64, i64, i64);
 
 impl Point {
     pub fn distance(self, other: Self) -> i64 {
@@ -18,6 +21,14 @@ impl Point {
         let dz = (self.2 - other.2).abs();
 
         dx + dy + dz
+    }
+}
+
+impl Sub for Point {
+    type Output = (i64, i64, i64);
+
+    fn sub(self, other: Point) -> (i64, i64, i64) {
+        (self.0 - other.0, self.1 - other.1, self.2 - other.2)
     }
 }
 
@@ -50,12 +61,16 @@ impl Nanobot {
         T: IntoIterator<Item = Result<S, E>>,
     {
         iter.into_iter()
-            .map(|l| {
-                let p: Result<Self, failure::Error> = match l {
-                    Ok(s) => Nanobot::parse_line(s.as_ref()),
-                    Err(err) => Err(err.into()),
-                };
-                p
+            .filter_map(|rl| match rl {
+                Err(e) => Some(Err(e.into())),
+                Ok(l) => {
+                    let trimmed = l.as_ref().trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(Self::parse_line(trimmed))
+                    }
+                }
             })
             .collect()
     }
@@ -77,6 +92,185 @@ pub fn strongest_range(bots: &[Nanobot]) -> Option<(Nanobot, isize)> {
         .sum();
 
     Some((strongest.clone(), in_range))
+}
+
+pub fn min_dist(v: i64, start: i64, end: i64) -> i64 {
+    if v < start {
+        return start - v;
+    }
+    if v > end {
+        return v - end;
+    }
+
+    0
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Region(Point, Point);
+
+impl Region {
+    pub fn size(&self) -> i64 {
+        let &Region(p1, p2) = self;
+        let (dx, dy, dz) = p2 - p1;
+        (dx + 1) * (dy + 1) + (dz + 1)
+    }
+
+    pub fn min_distance(&self, point: Point) -> i64 {
+        let &Region(p1, p2) = self;
+        let dx = min_dist(point.0, p1.0, p2.0);
+        let dy = min_dist(point.1, p1.1, p2.1);
+        let dz = min_dist(point.2, p1.2, p2.2);
+
+        dx + dy + dz
+    }
+    pub fn max_distance(&self, point: Point) -> i64 {
+        let &Region(p1, p2) = self;
+        let (d1, d2) = (p1 - point, p2 - point);
+
+        let dx = max(d1.0.abs(), d2.0.abs());
+        let dy = max(d1.1.abs(), d2.1.abs());
+        let dz = max(d1.2.abs(), d2.2.abs());
+
+        dx + dy + dz
+    }
+
+    pub fn possible_range(&self, bot: &Nanobot) -> bool {
+        self.min_distance(bot.loc) <= bot.signal
+    }
+
+    pub fn split(&self, n: usize) -> Vec<Region> {
+        if n <= 1 {
+            return vec![self.clone()];
+        }
+        let Region(p1, p2) = self;
+
+        fn split_value(v1: i64, v2: i64, n: usize) -> Vec<i64> {
+            let dv = v2 - v1;
+            let mut values: Vec<i64> = (0..=n).map(|s| v1 + (s as i64) * dv / (n as i64)).collect();
+            values[0] -= 1;
+            values.dedup();
+            values
+        }
+
+        let xs = split_value(p1.0, p2.0, n);
+        let ys = split_value(p1.1, p2.1, n);
+        let zs = split_value(p1.2, p2.2, n);
+
+        let mut regions = Vec::with_capacity((xs.len() - 1) * (ys.len() - 1) * (zs.len() - 1));
+
+        for (&x1, &x2) in xs.iter().zip(&xs[1..]) {
+            for (&y1, &y2) in ys.iter().zip(&ys[1..]) {
+                for (&z1, &z2) in zs.iter().zip(&zs[1..]) {
+                    regions.push(Region(Point(x1 + 1, y1 + 1, z1 + 1), Point(x2, y2, z2)));
+                }
+            }
+        }
+
+        regions
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct BotRegion {
+    in_range: usize,
+    area: Region,
+}
+
+pub struct BotMaximizer {
+    bots: Vec<Nanobot>,
+    // area: Region,
+    queue: BinaryHeap<BotRegion>,
+    strongest: Option<(usize, Point)>,
+}
+
+impl BotMaximizer {
+    pub fn new(bots: Vec<Nanobot>) -> Self {
+        if bots.is_empty() {
+            panic!("Can't maximize over empty bots");
+        }
+        let someps = bots
+            .iter()
+            .fold(None, |extrema: Option<(Point, Point)>, b| {
+                let points = match extrema {
+                    None => (b.loc, b.loc),
+                    Some((minp, maxp)) => (
+                        Point(
+                            min(minp.0, b.loc.0),
+                            min(minp.1, b.loc.1),
+                            min(minp.2, b.loc.2),
+                        ),
+                        Point(
+                            max(maxp.0, b.loc.0),
+                            max(maxp.1, b.loc.1),
+                            max(maxp.2, b.loc.2),
+                        ),
+                    ),
+                };
+
+                Some(points)
+            });
+
+        let (minp, maxp) = someps.unwrap();
+
+        let initial = BotRegion {
+            in_range: bots.len(),
+            area: Region(minp, maxp),
+        };
+        let queue = BinaryHeap::from(vec![initial]);
+
+        BotMaximizer {
+            bots,
+            // area: Region(minp, maxp),
+            queue,
+            strongest: None,
+        }
+    }
+
+    fn calculate_in_range(&self, region: &Region) -> usize {
+        let mut sum = 0;
+        for b in &self.bots {
+            let ranged = region.possible_range(b);
+            // println!(
+            //     "Range: {:?} - {:?}: {}, {}",
+            //     b,
+            //     region,
+            //     region.min_distance(b.loc),
+            //     ranged
+            // );
+
+            if ranged {
+                sum += 1;
+            }
+        }
+        sum
+    }
+
+    // Step forward, and return 'true' if more work needs to be done.
+    pub fn step(&mut self, n: usize) -> bool {
+        if self.strongest.is_some() {
+            return false;
+        }
+
+        if self.queue.is_empty() {
+            panic!("Should not have an empty queue");
+        }
+
+        let next = self.queue.pop().unwrap();
+        let splits = next.area.split(n);
+        if splits.len() == 1 {
+            println!("Found maximal region: {:?}", next);
+            self.strongest = Some((next.in_range, next.area.0));
+            return false;
+        }
+
+        for r in splits {
+            let in_range = self.calculate_in_range(&r);
+            let br = BotRegion { in_range, area: r };
+            self.queue.push(br);
+        }
+
+        true
+    }
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -131,6 +325,25 @@ mod tests {
     }
 
     #[test]
+    fn test_splits() {
+        let r = Region(Point(10, 20, 40), Point(12, 21, 40));
+        let mut splits = r.split(3);
+        splits.sort();
+
+        assert_eq!(
+            splits,
+            vec![
+                Region(Point(10, 20, 40), Point(10, 20, 40)),
+                Region(Point(10, 21, 40), Point(10, 21, 40)),
+                Region(Point(11, 20, 40), Point(11, 20, 40)),
+                Region(Point(11, 21, 40), Point(11, 21, 40)),
+                Region(Point(12, 20, 40), Point(12, 20, 40)),
+                Region(Point(12, 21, 40), Point(12, 21, 40)),
+            ]
+        )
+    }
+
+    #[test]
     fn test_parse() {
         let bots = get_test_bots(TEST_INPUT).unwrap();
         assert_eq!(bots.len(), 9);
@@ -146,5 +359,45 @@ mod tests {
         );
 
         assert_eq!(in_range, 7);
+    }
+
+    const TEST_INPUT2: &str = r#"
+    pos=<10,12,12>, r=2
+    pos=<12,14,12>, r=2
+    pos=<16,12,12>, r=4
+    pos=<14,14,14>, r=6
+    pos=<50,50,50>, r=200
+    pos=<10,10,10>, r=5"#;
+
+    #[test]
+    fn test_maximizer() {
+        let bots = get_test_bots(TEST_INPUT2).unwrap();
+        assert_eq!(bots.len(), 6);
+
+        let mut maximizer = BotMaximizer::new(bots);
+        let r = maximizer.queue.peek().unwrap().area.clone();
+        let ir = maximizer.calculate_in_range(&r);
+        assert_eq!(ir, maximizer.bots.len());
+
+        let r = Region(Point(12, 12, 12), Point(12, 12, 12));
+        let ir = maximizer.calculate_in_range(&r);
+        assert_eq!(ir, 5);
+
+        let r = Region(Point(10, 10, 10), Point(23, 23, 23));
+        let ir = maximizer.calculate_in_range(&r);
+        assert_eq!(ir, 6);
+
+        println!("Looking at {:?}", maximizer.queue.peek());
+
+        while maximizer.step(3) {
+            println!("Looking at {:?}", maximizer.queue.peek());
+            let queued = maximizer.queue.clone().into_sorted_vec();
+            println!("Queue: {:?}", &queued[queued.len() - 10..]);
+        }
+
+        let (d, p) = maximizer.strongest.unwrap();
+
+        assert_eq!(d, 5);
+        assert_eq!(p, Point(12, 12, 12));
     }
 }
