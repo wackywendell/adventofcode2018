@@ -247,20 +247,43 @@ impl BotMaximizer {
 
     // Step forward, and return 'true' if more work needs to be done.
     pub fn step(&mut self, n: usize) -> bool {
-        if self.strongest.is_some() {
+        if self.queue.is_empty() {
+            println!("Queue is empty, done.");
             return false;
         }
 
-        if self.queue.is_empty() {
-            panic!("Should not have an empty queue");
+        if let Some((max_r, _)) = self.strongest {
+            let br = self.queue.peek().unwrap();
+            if br.in_range < max_r {
+                // There are no regions with better points
+                println!("Next range is {}, not good enough", br.in_range);
+                return false;
+            }
         }
 
         let next = self.queue.pop().unwrap();
         let splits = next.area.split(n);
         if splits.len() == 1 {
-            println!("Found maximal region: {:?}", next);
-            self.strongest = Some((next.in_range, next.area.0));
-            return false;
+            self.strongest = match self.strongest {
+                None => {
+                    println!("Found new region: {:?}", next);
+                    Some((next.in_range, next.area.0))
+                }
+                Some((r, pt)) => {
+                    let new_point = next.area.0;
+
+                    let old_mh = pt.distance(Point(0, 0, 0));
+                    let new_mh = new_point.distance(Point(0, 0, 0));
+                    if r > next.in_range || old_mh < new_mh {
+                        println!("Found another region: {:?}; not close enough", next);
+                        Some((r, pt))
+                    } else {
+                        println!("Found another region: {:?}; replacing", next);
+                        Some((next.in_range, new_point))
+                    }
+                }
+            };
+            return true;
         }
 
         for r in splits {
@@ -296,6 +319,19 @@ fn main() -> Result<(), failure::Error> {
 
     println!("Strongest bot: {:?}", strongest);
     println!("In range: {}", in_range);
+
+    let mut maximizer = BotMaximizer::new(bots);
+
+    while maximizer.step(3) {
+        // println!("Looking at {:?}", maximizer.queue.peek());
+        // let queued = maximizer.queue.clone().into_sorted_vec();
+        // println!("Queue: {:?}", &queued[queued.len() - 10..]);
+    }
+
+    let (d, p) = maximizer.strongest.unwrap();
+
+    println!("Point: ({}, {}, {}), In Range: {}", p.0, p.1, p.2, d);
+    println!("Distance from 0: {}", p.distance(Point(0, 0, 0)));
 
     Ok(())
 }
