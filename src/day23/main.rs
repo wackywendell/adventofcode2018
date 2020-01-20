@@ -43,20 +43,19 @@ impl Nanobot {
         })
     }
 
-    pub fn parse_lines<I, S>(lines: I) -> Result<Vec<Self>, failure::Error>
+    fn parse_lines<S, E, T>(iter: T) -> Result<Vec<Self>, failure::Error>
     where
         S: AsRef<str>,
-        I: IntoIterator<Item = S>,
+        E: Into<failure::Error>,
+        T: IntoIterator<Item = Result<S, E>>,
     {
-        lines
-            .into_iter()
-            .filter_map(|l| {
-                let trimmed = l.as_ref().trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(Self::parse_line(trimmed))
-                }
+        iter.into_iter()
+            .map(|l| {
+                let p: Result<Self, failure::Error> = match l {
+                    Ok(s) => Nanobot::parse_line(s.as_ref()),
+                    Err(err) => Err(err.into()),
+                };
+                p
             })
             .collect()
     }
@@ -99,6 +98,11 @@ fn main() -> Result<(), failure::Error> {
     let buf_reader = BufReader::new(file);
     let bots = Nanobot::parse_lines(buf_reader.lines())?;
 
+    let (strongest, in_range) = strongest_range(&bots).unwrap();
+
+    println!("Strongest bot: {:?}", strongest);
+    println!("In range: {}", in_range);
+
     Ok(())
 }
 
@@ -120,7 +124,10 @@ mod tests {
 
     fn get_test_bots(s: &str) -> Result<Vec<Nanobot>, failure::Error> {
         let lines: Vec<&str> = s.split('\n').collect();
-        Nanobot::parse_lines(lines)
+        let bots: Vec<Nanobot> =
+            Nanobot::parse_lines::<_, failure::Error, _>(lines.iter().map(Ok))?;
+
+        Ok(bots)
     }
 
     #[test]
