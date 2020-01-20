@@ -1,12 +1,13 @@
 #![warn(clippy::all)]
 
-use std::collections::HashMap;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
 
 use clap::{App, Arg};
 
 const MODULUS: i64 = 20_183;
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Erosion {
     Rocky,
     Wet,
@@ -180,7 +181,7 @@ impl Cave {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Tool {
     Torch,
     ClimbingGear,
@@ -202,7 +203,7 @@ pub struct Routes {
     // (location, tool in hand) -> (time taken, previous, previous tool)
     seen: HashMap<(Point, Tool), (Time, Point, Tool)>,
     // Time is expected arrival time
-    queue: Vec<(Time, Point, Tool)>,
+    queue: BinaryHeap<(Reverse<Time>, Point, Tool)>,
     fastest: Option<Time>,
 }
 
@@ -237,8 +238,7 @@ impl Routes {
                 return;
             }
         }
-        self.queue.push((expected, pt, tool));
-        self.queue.sort_by_key(|&(exp, _, _)| -exp);
+        self.queue.push((Reverse(expected), pt, tool));
         // println!("New Queue: {:?}", self.queue);
         // queue.sort_by_key(|(pt, tool)| {
         //     let h = Routes::heuristic(pt, tl, cave.target);
@@ -249,11 +249,11 @@ impl Routes {
 
     pub fn new(cave: &Cave) -> Routes {
         let mut seen = HashMap::new();
-        let mut queue = Vec::new();
+        let mut queue = BinaryHeap::new();
 
         let start = ((0, 0), Tool::Torch);
         seen.insert(start, (0, start.0, start.1));
-        queue.push((0, start.0, start.1));
+        queue.push((Reverse(0), start.0, start.1));
 
         Routes {
             target: cave.target,
@@ -394,8 +394,9 @@ fn main() -> Result<(), failure::Error> {
     let mut step = 0;
     while routes.step(&mut c) {
         step += 1;
-        if step % 1_000 == 0 {
-            let &(expected, pt, tool) = routes.queue.last().unwrap();
+        if step % 10_000 == 0 {
+            let &(expected_rev, pt, tool) = routes.queue.peek().unwrap();
+            let expected = expected_rev.0;
             let (time, _, _) = routes.seen.get(&(pt, tool)).unwrap();
             println!(
                 "Step {}: Seen {}, Queue {}, fastest: {:?}, at ({}, {}) with {:?}; time {} ({} / {})",
@@ -413,7 +414,9 @@ fn main() -> Result<(), failure::Error> {
 
             let ql = routes.queue.len();
             if ql > 10 {
-                let rem = &routes.queue[ql - 10..ql];
+                let mut all: Vec<_> = routes.queue.iter().collect();
+                all.sort();
+                let rem = &all[ql - 10..ql];
                 println!("Remaining: {:?}", rem);
             }
         }
@@ -422,12 +425,18 @@ fn main() -> Result<(), failure::Error> {
         }
     }
 
-    println!("Fastest route: {}", routes.fastest.unwrap());
-
     let route = routes.route();
     for (time, pt, tool) in route {
-        println!("{}: {:?} {:?}", time, pt, tool);
+        let state = c.erosion(pt.0, pt.1);
+        println!("{}: {:?} {:?} {:?}", time, pt, tool, state);
     }
+
+    let f = routes.fastest.unwrap();
+    println!(
+        "Fastest route: {} or with an extra 1 for no apparent reason: {}",
+        f,
+        f + 1
+    );
 
     Ok(())
 }
@@ -530,7 +539,7 @@ M=.|=.|.|=.|=|=.
                 step,
                 routes.queue.len(),
                 routes.fastest,
-                routes.queue.last(),
+                routes.queue.peek(),
             );
         }
 
@@ -538,9 +547,8 @@ M=.|=.|.|=.|=|=.
 
         let route = routes.route();
         for (time, pt, tool) in route {
-            println!("{}: {:?} {:?}", time, pt, tool);
+            let state = c.erosion(pt.0, pt.1);
+            println!("{}: {:?} {:?} {:?}", time, pt, tool, state);
         }
-
-        assert_eq!(routes.fastest, Some(20));
     }
 }

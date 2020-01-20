@@ -347,3 +347,4 @@ What is the fewest number of minutes you can take to reach the target?
 ### Part 2
 
 1088 is too low
+1094 is too high
