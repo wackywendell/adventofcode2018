@@ -111,6 +111,7 @@ failure = "0.1"
 itertools = "0.8.0"
 lazy_static = "1.2"
 nom = "4.1"
+nom5 = { version = "5.1.0", package = "nom" }
 primes = "0.2.4"
 regex = "1"
 text_io = "0.1.7"
