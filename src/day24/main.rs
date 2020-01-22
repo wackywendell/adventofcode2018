@@ -35,44 +35,61 @@ pub struct Battle {
     immune: Vec<Army>,
 }
 
-fn parse_reaction<'a>(reaction: &str, s: &'a str) -> IResult<&'a str, HashSet<String>> {
-    let (i, _) = tag(reaction)(s)?;
-    let (i, _) = tag(" to ")(i)?;
-    let (i, o) = separated_nonempty_list(tag(", "), recognize(many1(alphanumeric1)))(i)?;
-    let reactions: HashSet<String> = o.iter().map(|&sr: &&str| String::from(sr)).collect();
-    Ok((i, reactions))
+// Returns (finished, words)
+fn parse_reaction<'a>(reaction: &'a str) -> impl Fn(&'a str) -> IResult<&'a str, HashSet<String>> {
+    move |i: &str| {
+        let (i, typ) = tag(reaction)(i)?;
+        let (i, _) = tag(" to ")(i)?;
+        let (i, mut words) =
+            separated_nonempty_list(tag(", "), recognize(many1(alphanumeric1)))(i)?;
+        let wordset = words.drain(..).map(str::to_owned).collect();
+        Ok((i, wordset))
+    }
+}
+
+// Returns (finished, words)
+fn parse_reaction_start<'a>(
+    reaction: &'a str,
+) -> impl Fn(&'a str) -> IResult<&'a str, (bool, HashSet<String>)> {
+    move |i: &str| {
+        let (i, wordset) = parse_reaction(reaction)(i)?;
+        let (i, next) = alt((tag(")"), tag("; ")))(i)?;
+
+        Ok((i, (next == ")", wordset)))
+    }
 }
 
 fn parse_reactions(i: &str) -> IResult<&str, Reactions> {
     let (i, _) = tag("(")(i)?;
-    let (mut i, weaknesses) = match parse_reaction("weak", i) {
-        Err(Err::Error(_)) => (i, HashSet::new()),
-        Err(e) => return Err(e),
-        Ok((i, h)) => (i, h),
+    let weak = parse_reaction("weak");
+    let immune = parse_reaction("immune");
+
+    let (i, weak_match) = opt(parse_reaction_start("weak"))(i)?;
+    if let Some((finished, weaknesses)) = weak_match {
+        let (i, immunities) = if finished {
+            (i, HashSet::new())
+        } else {
+            let (i, imm) = parse_reaction("immune")(i)?;
+            let (i, _) = tag(")")(i)?;
+            (i, imm)
+        };
+        return Ok((
+            i,
+            Reactions {
+                weaknesses,
+                immunities,
+            },
+        ));
     };
 
-    if !weaknesses.is_empty() {
-        i = match tag("; ")(i) {
-            Ok((i, _)) => i,
-            Err(Err::Error(_)) => {
-                // We only have weaknesses
-                let (i, _) = tag(")")(i)?;
-                return Ok((
-                    i,
-                    Reactions {
-                        weaknesses,
-                        immunities: HashSet::new(),
-                    },
-                ));
-            }
-            Err(e) => return Err(e),
-        };
-    }
-
-    let (i, immunities) = parse_reaction("immune", i)?;
-
-    let (i, _) = tag(")")(i)?;
-
+    let (i, (finished, immunities)) = parse_reaction_start("immune")(i)?;
+    let (i, weaknesses) = if finished {
+        (i, HashSet::new())
+    } else {
+        let (i, wk) = parse_reaction("weak")(i)?;
+        let (i, _) = tag(")")(i)?;
+        (i, wk)
+    };
     Ok((
         i,
         Reactions {
@@ -153,27 +170,26 @@ where
 {
     let mut battle: Battle = Default::default();
 
-    let mut seen_infection = false;
-    let mut seen_immune = false;
+    let mut state = PossibleLine::Empty;
 
     for l in iter {
         let line = l.map_err(|e| e.into())?;
         let army = match parse_line(line.as_ref())? {
             PossibleLine::Empty => continue,
             PossibleLine::Infection => {
-                seen_infection = true;
+                state = PossibleLine::Infection;
                 continue;
             }
             PossibleLine::Immune => {
-                seen_immune = true;
+                state = PossibleLine::Immune;
                 continue;
             }
             PossibleLine::Army(army) => army,
         };
 
-        if seen_infection {
+        if state == PossibleLine::Infection {
             battle.infection.push(army);
-        } else if seen_immune {
+        } else if state == PossibleLine::Immune {
             battle.immune.push(army);
         } else {
             return Err(failure::err_msg("Expected it to start with army name"));
@@ -269,6 +285,8 @@ mod tests {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
         let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
         let battle = maybe_battle.unwrap();
+
+        eprintln!("Battle: {:?}", battle);
 
         assert_eq!(battle.immune.len(), 2);
         assert_eq!(battle.infection.len(), 2);
