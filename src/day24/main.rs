@@ -121,48 +121,66 @@ pub fn parse_army(i: &str) -> IResult<&str, Army> {
     ))
 }
 
-pub fn parse_lines<'a, S, E, T>(iter: T) -> Result<Battle, failure::Error>
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PossibleLine {
+    Empty,
+    Immune,
+    Infection,
+    Army(Army),
+}
+
+fn parse_line(s: &str) -> Result<PossibleLine, failure::Error> {
+    let l = s.trim();
+    match l {
+        "" => Ok(PossibleLine::Empty),
+        "Immune System:" => Ok(PossibleLine::Infection),
+        "Infection:" => Ok(PossibleLine::Immune),
+        t => {
+            let army = match parse_army(t) {
+                Err(e) => return Err(e.to_owned().into()),
+                Ok((_, army)) => army,
+            };
+            Ok(PossibleLine::Army(army))
+        }
+    }
+}
+
+pub fn parse_lines<S, E, T>(iter: T) -> Result<Battle, failure::Error>
 where
-    S: AsRef<str> + 'a,
+    S: AsRef<str>,
     E: Into<failure::Error>,
-    T: IntoIterator<Item = Result<S, E>> + 'a,
+    T: IntoIterator<Item = Result<S, E>>,
 {
+    let mut battle: Battle = Default::default();
+
     let mut seen_infection = false;
     let mut seen_immune = false;
 
-    let mut battle: Battle = Default::default();
-
-    for rl in iter {
-        let line = match rl {
-            Err(e) => return Err(e.into()),
-            Ok(ref l) => l.as_ref().trim(),
-        };
-        if line.is_empty() {
-            continue;
-        };
-
-        if !seen_immune {
-            if line != "Immune System:" {
-                return Err(failure::err_msg("Expected line 'Immune System:', got {}"));
+    for l in iter {
+        let line = l.map_err(|e| e.into())?;
+        let army = match parse_line(line.as_ref())? {
+            PossibleLine::Empty => continue,
+            PossibleLine::Infection => {
+                seen_infection = true;
+                continue;
             }
-            seen_immune = true;
-            continue;
-        }
-        if line == "Infection:" {
-            seen_infection = true;
-            continue;
-        }
-
-        let (i, army) = parse_army(line)?;
+            PossibleLine::Immune => {
+                seen_immune = true;
+                continue;
+            }
+            PossibleLine::Army(army) => army,
+        };
 
         if seen_infection {
             battle.infection.push(army);
-        } else {
+        } else if seen_immune {
             battle.immune.push(army);
+        } else {
+            return Err(failure::err_msg("Expected it to start with army name"));
         }
     }
 
-    return Ok(battle);
+    Ok(battle)
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -186,8 +204,6 @@ fn main() -> Result<(), failure::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const TEST_INPUT: &str = r#""#;
 
     fn hs_from_arr(strings: &[&str]) -> HashSet<String> {
         strings.iter().map(|&s: &&str| s.to_owned()).collect()
@@ -224,5 +240,37 @@ mod tests {
         assert_eq!(o.weaknesses, HashSet::new());
         assert_eq!(o.immunities, hs_from_arr(&["cold"]));
         assert_eq!(i, "");
+    }
+
+    const TEST_INPUT: &str = r#"
+        Immune System:
+        17 units each with 5390 hit points (weak to radiation, bludgeoning) with an attack that does 4507 fire damage at initiative 2
+        989 units each with 1274 hit points (immune to fire; weak to bludgeoning, slashing) with an attack that does 25 slashing damage at initiative 3
+
+        Infection:
+        801 units each with 4706 hit points (weak to radiation) with an attack that does 116 bludgeoning damage at initiative 1
+        4485 units each with 2961 hit points (immune to radiation; weak to fire, cold) with an attack that does 12 slashing damage at initiative 4
+    "#;
+
+    #[test]
+    fn test_parse_line() {
+        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
+        let o = parse_line(lines[2]);
+
+        let army = if let Ok(PossibleLine::Army(army)) = o {
+            army
+        } else {
+            panic!("Failed to unwrap army: {:?}", o);
+        };
+    }
+
+    #[test]
+    fn test_parse_lines() {
+        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
+        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
+        let battle = maybe_battle.unwrap();
+
+        assert_eq!(battle.immune.len(), 2);
+        assert_eq!(battle.infection.len(), 2);
     }
 }
