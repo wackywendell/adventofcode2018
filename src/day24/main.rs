@@ -13,7 +13,7 @@ use nom5::{
     IResult,
 };
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Index {
     value: i64,
 }
@@ -48,6 +48,10 @@ impl Army {
             value: self.initiative,
         }
     }
+
+    fn effective_power(&self) -> i64 {
+        self.units * self.damage
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -56,14 +60,30 @@ pub struct Battle {
     armies: HashMap<Index, Army>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Fight<'a> {
-    battle: &'a mut Battle,
-}
-
 impl Battle {
-    pub fn start_fight(&mut self) -> Fight {
-        Fight { battle: self }
+    fn target_order(&self) -> VecDeque<Index> {
+        let mut queue: Vec<Index> = self.armies.iter().map(|(_, a)| a.index()).collect();
+
+        queue.sort_unstable_by_key(|&ix| (-self[ix].effective_power(), -self[ix].initiative));
+
+        println!("Target Order:");
+        for &ix in &queue {
+            println!(
+                "  Index: {}, power: {}",
+                ix.value,
+                self[ix].effective_power()
+            );
+        }
+
+        VecDeque::from(queue)
+    }
+
+    fn attack_order(&self) -> VecDeque<Index> {
+        let mut queue: Vec<Index> = self.armies.iter().map(|(_, a)| a.index()).collect();
+
+        queue.sort_unstable_by_key(|&ix| std::cmp::Reverse(self[ix].initiative));
+
+        VecDeque::from(queue)
     }
 }
 
@@ -80,29 +100,6 @@ impl std::ops::IndexMut<Index> for Battle {
 
     fn index_mut(&mut self, key: Index) -> &mut Army {
         self.armies.get_mut(&key).unwrap()
-    }
-}
-
-impl<'a> Fight<'a> {
-    fn target_order(&self) -> VecDeque<Index> {
-        let mut queue: Vec<Index> = self.battle.armies.iter().map(|(_, a)| a.index()).collect();
-
-        queue.sort_unstable_by_key(|&ix| {
-            (
-                self.battle[ix].damage * self.battle[ix].units,
-                self.battle[ix].initiative,
-            )
-        });
-
-        VecDeque::from(queue)
-    }
-
-    fn attack_order(&self) -> VecDeque<Index> {
-        let mut queue: Vec<Index> = self.battle.armies.iter().map(|(_, a)| a.index()).collect();
-
-        queue.sort_unstable_by_key(|&ix| self.battle[ix].initiative);
-
-        VecDeque::from(queue)
     }
 }
 
@@ -260,16 +257,24 @@ where
         };
 
         if state == PossibleLine::Infection {
-            eprintln!("Pushing infection: {:?}", army);
             army.side = Side::Infection;
-            battle.armies.insert(army.index(), army);
+            eprintln!(
+                "Pushing infection: {:?} power: {}",
+                army,
+                army.effective_power()
+            );
         } else if state == PossibleLine::Immune {
-            eprintln!("Pushing immune: {:?}", army);
             army.side = Side::Immune;
-            battle.armies.insert(army.index(), army);
+            eprintln!(
+                "Pushing immune: {:?} power: {}",
+                army,
+                army.effective_power()
+            );
         } else {
             return Err(failure::err_msg("Expected it to start with army name"));
         }
+
+        battle.armies.insert(army.index(), army);
     }
 
     Ok(battle)
@@ -442,31 +447,23 @@ mod tests {
         assert_eq!(battle[army4.index()], army4);
     }
 
+    #[test]
     fn test_target_order() {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
         let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
-        let mut battle = maybe_battle.unwrap();
+        let battle = maybe_battle.unwrap();
 
-        let order: Vec<i64> = battle
-            .start_fight()
-            .target_order()
-            .iter()
-            .map(|i| i.value)
-            .collect();
-        assert_eq!(order, vec![1, 4, 2, 3]);
+        let order: Vec<i64> = battle.target_order().iter().map(|i| i.value).collect();
+        assert_eq!(order, vec![1, 2, 4, 3]);
     }
 
+    #[test]
     fn test_attack_order() {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
         let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
-        let mut battle = maybe_battle.unwrap();
+        let battle = maybe_battle.unwrap();
 
-        let order: Vec<i64> = battle
-            .start_fight()
-            .target_order()
-            .iter()
-            .map(|i| i.value)
-            .collect();
+        let order: Vec<i64> = battle.attack_order().iter().map(|i| i.value).collect();
         assert_eq!(order, vec![4, 3, 2, 1]);
     }
 }
