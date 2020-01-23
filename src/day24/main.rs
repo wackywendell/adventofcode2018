@@ -10,7 +10,7 @@ use nom5::{
     combinator::{opt, recognize},
     multi::{many1, separated_nonempty_list},
     sequence::{pair, tuple},
-    Err, IResult,
+    IResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,9 +36,10 @@ pub struct Battle {
 }
 
 // Returns (finished, words)
-fn parse_reaction<'a>(reaction: &'a str) -> impl Fn(&'a str) -> IResult<&'a str, HashSet<String>> {
+#[allow(clippy::needless_lifetimes)]
+fn parse_reaction<'a>(reaction: &'a str) -> impl Fn(&'a str) -> IResult<&str, HashSet<String>> {
     move |i: &str| {
-        let (i, typ) = tag(reaction)(i)?;
+        let (i, _) = tag(reaction)(i)?;
         let (i, _) = tag(" to ")(i)?;
         let (i, mut words) =
             separated_nonempty_list(tag(", "), recognize(many1(alphanumeric1)))(i)?;
@@ -48,9 +49,10 @@ fn parse_reaction<'a>(reaction: &'a str) -> impl Fn(&'a str) -> IResult<&'a str,
 }
 
 // Returns (finished, words)
+#[allow(clippy::needless_lifetimes)]
 fn parse_reaction_start<'a>(
     reaction: &'a str,
-) -> impl Fn(&'a str) -> IResult<&'a str, (bool, HashSet<String>)> {
+) -> impl Fn(&'a str) -> IResult<&str, (bool, HashSet<String>)> {
     move |i: &str| {
         let (i, wordset) = parse_reaction(reaction)(i)?;
         let (i, next) = alt((tag(")"), tag("; ")))(i)?;
@@ -61,8 +63,6 @@ fn parse_reaction_start<'a>(
 
 fn parse_reactions(i: &str) -> IResult<&str, Reactions> {
     let (i, _) = tag("(")(i)?;
-    let weak = parse_reaction("weak");
-    let immune = parse_reaction("immune");
 
     let (i, weak_match) = opt(parse_reaction_start("weak"))(i)?;
     if let Some((finished, weaknesses)) = weak_match {
@@ -150,8 +150,8 @@ fn parse_line(s: &str) -> Result<PossibleLine, failure::Error> {
     let l = s.trim();
     match l {
         "" => Ok(PossibleLine::Empty),
-        "Immune System:" => Ok(PossibleLine::Infection),
-        "Infection:" => Ok(PossibleLine::Immune),
+        "Immune System:" => Ok(PossibleLine::Immune),
+        "Infection:" => Ok(PossibleLine::Infection),
         t => {
             let army = match parse_army(t) {
                 Err(e) => return Err(e.to_owned().into()),
@@ -188,13 +188,19 @@ where
         };
 
         if state == PossibleLine::Infection {
+            eprintln!("Pushing infection: {:?}", army);
             battle.infection.push(army);
         } else if state == PossibleLine::Immune {
+            eprintln!("Pushing immune: {:?}", army);
             battle.immune.push(army);
         } else {
             return Err(failure::err_msg("Expected it to start with army name"));
         }
     }
+
+    // Highest initiative first
+    battle.immune.sort_unstable_by_key(|a| -a.initiative);
+    battle.infection.sort_unstable_by_key(|a| -a.initiative);
 
     Ok(battle)
 }
@@ -278,6 +284,21 @@ mod tests {
         } else {
             panic!("Failed to unwrap army: {:?}", o);
         };
+
+        assert_eq!(
+            army,
+            Army {
+                initiative: 2,
+                damage: 4507,
+                hp: 5390,
+                reactions: Reactions {
+                    immunities: hs_from_arr(&[]),
+                    weaknesses: hs_from_arr(&["radiation", "bludgeoning"]),
+                },
+                specialty: "fire".to_owned(),
+                units: 17,
+            }
+        );
     }
 
     #[test]
@@ -289,6 +310,35 @@ mod tests {
         eprintln!("Battle: {:?}", battle);
 
         assert_eq!(battle.immune.len(), 2);
+        assert!(battle.immune[0].initiative > battle.immune[1].initiative);
         assert_eq!(battle.infection.len(), 2);
+        assert!(battle.infection[0].initiative > battle.infection[1].initiative);
+
+        // 17 units each with 5390 hit points (weak to radiation, bludgeoning) with an attack that does 4507 fire damage at initiative 2
+        let army1 = Army {
+            initiative: 2,
+            damage: 4507,
+            hp: 5390,
+            reactions: Reactions {
+                immunities: hs_from_arr(&[]),
+                weaknesses: hs_from_arr(&["radiation", "bludgeoning"]),
+            },
+            specialty: "fire".to_owned(),
+            units: 17,
+        };
+        // 989 units each with 1274 hit points (immune to fire; weak to bludgeoning, slashing) with an attack that does 25 slashing damage at initiative 3
+        let army2 = Army {
+            initiative: 3,
+            damage: 25,
+            hp: 1274,
+            reactions: Reactions {
+                immunities: hs_from_arr(&["fire"]),
+                weaknesses: hs_from_arr(&["bludgeoning", "slashing"]),
+            },
+            specialty: "slashing".to_owned(),
+            units: 989,
+        };
+
+        assert_eq!(battle.immune, vec!(army1, army2));
     }
 }
