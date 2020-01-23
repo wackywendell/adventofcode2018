@@ -1,6 +1,6 @@
 #![warn(clippy::all)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use clap::{App, Arg};
 use nom5::{
@@ -19,8 +19,16 @@ pub struct Reactions {
     immunities: HashSet<String>,
 }
 
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Side {
+    Unknown,
+    Infection,
+    Immune,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Army {
+    side: Side,
     initiative: i64,
     units: i64,
     hp: i64,
@@ -29,10 +37,83 @@ pub struct Army {
     reactions: Reactions,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ArmyOrder {
+    side: Side,
+    initiative: i64,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Battle {
-    infection: Vec<Army>,
-    immune: Vec<Army>,
+    // Maps initiative -> Army
+    armies: HashMap<i64, Army>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Fight<'a> {
+    battle: &'a mut Battle,
+}
+
+impl Battle {
+    pub fn start_fight(&mut self) -> Fight {
+        Fight { battle: self }
+    }
+}
+
+impl std::ops::Index<i64> for Battle {
+    type Output = Army;
+
+    fn index(&self, key: i64) -> &Army {
+        &self.armies[&key]
+    }
+}
+
+impl std::ops::IndexMut<i64> for Battle {
+    // type Output = Army;
+
+    fn index_mut(&mut self, key: i64) -> &mut Army {
+        self.armies.get_mut(&key).unwrap()
+    }
+}
+
+impl<'a> Fight<'a> {
+    fn labeled_armies(&self) -> Vec<ArmyOrder> {
+        let mut queue: Vec<ArmyOrder> = Vec::with_capacity(self.battle.armies.len());
+        // for army in &self.battle.immune {
+        //     queue.push(ArmyOrder {
+        //         side: Side::Immune,
+        //         initiative: army.initiative,
+        //     });
+        // }
+        // for army in &self.battle.infection {
+        //     queue.push(ArmyOrder {
+        //         side: Side::Infection,
+        //         initiative: army.initiative,
+        //     });
+        // }
+
+        queue
+    }
+
+    fn target_order(&self) -> VecDeque<ArmyOrder> {
+        let mut queue = self.labeled_armies();
+
+        // queue.sort_unstable_by_key(|la| (la.army.damage * la.army.units, la.army.initiative));
+
+        VecDeque::from(queue)
+    }
+
+    fn attack_order(&self) -> VecDeque<ArmyOrder> {
+        let mut queue = self.labeled_armies();
+
+        // queue.sort_unstable_by_key(|la| la.army.initiative);
+
+        VecDeque::from(queue)
+    }
+
+    fn attack(&self) {
+        for la in self.attack_order() {}
+    }
 }
 
 // Returns (finished, words)
@@ -128,6 +209,7 @@ pub fn parse_army(i: &str) -> IResult<&str, Army> {
     Ok((
         i,
         Army {
+            side: Side::Unknown,
             initiative,
             units,
             hp,
@@ -174,7 +256,7 @@ where
 
     for l in iter {
         let line = l.map_err(|e| e.into())?;
-        let army = match parse_line(line.as_ref())? {
+        let mut army = match parse_line(line.as_ref())? {
             PossibleLine::Empty => continue,
             PossibleLine::Infection => {
                 state = PossibleLine::Infection;
@@ -189,18 +271,16 @@ where
 
         if state == PossibleLine::Infection {
             eprintln!("Pushing infection: {:?}", army);
-            battle.infection.push(army);
+            army.side = Side::Infection;
+            battle.armies.insert(army.initiative, army);
         } else if state == PossibleLine::Immune {
             eprintln!("Pushing immune: {:?}", army);
-            battle.immune.push(army);
+            army.side = Side::Immune;
+            battle.armies.insert(army.initiative, army);
         } else {
             return Err(failure::err_msg("Expected it to start with army name"));
         }
     }
-
-    // Highest initiative first
-    battle.immune.sort_unstable_by_key(|a| -a.initiative);
-    battle.infection.sort_unstable_by_key(|a| -a.initiative);
 
     Ok(battle)
 }
@@ -288,6 +368,7 @@ mod tests {
         assert_eq!(
             army,
             Army {
+                side: Side::Unknown,
                 initiative: 2,
                 damage: 4507,
                 hp: 5390,
@@ -316,6 +397,7 @@ mod tests {
 
         // 17 units each with 5390 hit points (weak to radiation, bludgeoning) with an attack that does 4507 fire damage at initiative 2
         let army1 = Army {
+            side: Side::Immune,
             initiative: 2,
             damage: 4507,
             hp: 5390,
@@ -328,6 +410,7 @@ mod tests {
         };
         // 989 units each with 1274 hit points (immune to fire; weak to bludgeoning, slashing) with an attack that does 25 slashing damage at initiative 3
         let army2 = Army {
+            side: Side::Immune,
             initiative: 3,
             damage: 25,
             hp: 1274,
@@ -339,6 +422,6 @@ mod tests {
             units: 989,
         };
 
-        assert_eq!(battle.immune, vec!(army1, army2));
+        assert_eq!(battle[2], vec!(army1, army2));
     }
 }
