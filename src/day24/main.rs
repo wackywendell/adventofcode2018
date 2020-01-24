@@ -54,8 +54,8 @@ impl Army {
         }
     }
 
-    fn effective_power(&self) -> i64 {
-        self.units * self.damage
+    fn effective_power(&self, boost: i64) -> i64 {
+        self.units * (self.damage + boost)
     }
 }
 
@@ -63,6 +63,7 @@ impl Army {
 pub struct Battle {
     // Maps initiative -> Army
     armies: HashMap<Index, Army>,
+    boost: i64,
 }
 
 impl Battle {
@@ -80,18 +81,26 @@ impl Battle {
         (imm, inf)
     }
 
+    pub fn effective_power(&self, ix: Index) -> i64 {
+        let army = &self.armies[&ix];
+
+        let boost = if army.side == Side::Immune {
+            self.boost
+        } else {
+            0
+        };
+
+        (army.damage + boost) * army.units
+    }
+
     fn target_order(&self) -> VecDeque<Index> {
         let mut queue: Vec<Index> = self.armies.iter().map(|(_, a)| a.index()).collect();
 
-        queue.sort_unstable_by_key(|&ix| (-self[ix].effective_power(), -self[ix].initiative));
+        queue.sort_unstable_by_key(|&ix| (-self.effective_power(ix), -self[ix].initiative));
 
         debug!("Target Order:");
         for &ix in &queue {
-            debug!(
-                "  Index: {}, power: {}",
-                ix.value,
-                self[ix].effective_power()
-            );
+            debug!("  Index: {}, power: {}", ix.value, self.effective_power(ix));
         }
 
         VecDeque::from(queue)
@@ -117,7 +126,7 @@ impl Battle {
             return 0;
         }
 
-        let damage = a.effective_power();
+        let damage = self.effective_power(attack);
 
         if d.reactions.weaknesses.contains(&a.specialty) {
             return damage * 2;
@@ -141,9 +150,9 @@ impl Battle {
         // ((Damage, Effective Power, Initiative), Defender)
         let mut best: Option<((i64, i64, i64), Index)> = None;
         for (&ix, def) in &self.armies {
-            debug!("  {} ({}):", ix.value, self.armies[&ix].name);
+            debug!("  {} ({}):", ix.value, def.name);
             // Same side
-            if att_army.side == self.armies[&ix].side {
+            if att_army.side == def.side {
                 debug!("    Same side.");
                 continue;
             }
@@ -160,7 +169,7 @@ impl Battle {
                 continue;
             }
 
-            let new_key = (damage, def.effective_power(), def.initiative);
+            let new_key = (damage, self.effective_power(ix), def.initiative);
 
             let (last_key, _) = match best {
                 None => {
@@ -174,7 +183,7 @@ impl Battle {
             debug!(
                 "    Comparing: ({}, {}, {}) > ({}, {}, {}) = {}",
                 damage,
-                def.effective_power(),
+                self.effective_power(ix),
                 def.initiative,
                 last_key.0,
                 last_key.1,
@@ -400,7 +409,7 @@ fn parse_line(s: &str) -> Result<PossibleLine, failure::Error> {
     }
 }
 
-pub fn parse_lines<S, E, T>(iter: T) -> Result<Battle, failure::Error>
+pub fn parse_lines<S, E, T>(iter: T, boost: i64) -> Result<Battle, failure::Error>
 where
     S: AsRef<str>,
     E: Into<failure::Error>,
@@ -434,7 +443,7 @@ where
             debug!(
                 "Pushing infection: {:?} power: {}",
                 army,
-                army.effective_power()
+                army.effective_power(0)
             );
         } else if state == PossibleLine::Immune {
             immune_seen += 1;
@@ -443,7 +452,7 @@ where
             debug!(
                 "Pushing immune: {:?} power: {}",
                 army,
-                army.effective_power()
+                army.effective_power(0)
             );
         } else {
             return Err(failure::err_msg("Expected it to start with army name"));
@@ -473,7 +482,7 @@ fn main() -> Result<(), failure::Error> {
     debug!("Using input {}", input_path);
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
-    let mut battle = parse_lines(buf_reader.lines())?;
+    let mut battle = parse_lines(buf_reader.lines(), 0)?;
 
     loop {
         let killed = battle.fight();
@@ -602,7 +611,7 @@ mod tests {
     #[test]
     fn test_parse_lines() {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
+        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
         let battle = maybe_battle.unwrap();
 
         info!("Battle: {:?}", battle);
@@ -676,7 +685,7 @@ mod tests {
     #[test]
     fn test_target_order() {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
+        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
         let battle = maybe_battle.unwrap();
 
         let order: Vec<i64> = battle.target_order().iter().map(|i| i.value).collect();
@@ -686,7 +695,7 @@ mod tests {
     #[test]
     fn test_attack_order() {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
+        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
         let battle = maybe_battle.unwrap();
 
         let order: Vec<i64> = battle.attack_order().iter().map(|i| i.value).collect();
@@ -697,7 +706,7 @@ mod tests {
     #[test]
     fn test_fight() {
         let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
+        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
         let mut battle = maybe_battle.unwrap();
 
         battle.fight();
