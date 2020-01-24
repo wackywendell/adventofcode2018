@@ -22,7 +22,7 @@ pub struct Index {
     value: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Reactions {
     weaknesses: HashSet<String>,
     immunities: HashSet<String>,
@@ -290,9 +290,9 @@ fn parse_reaction_start<'a>(
 ) -> impl Fn(&'a str) -> IResult<&str, (bool, HashSet<String>)> {
     move |i: &str| {
         let (i, wordset) = parse_reaction(reaction)(i)?;
-        let (i, next) = alt((tag(")"), tag("; ")))(i)?;
+        let (i, next) = alt((tag(") "), tag("; ")))(i)?;
 
-        Ok((i, (next == ")", wordset)))
+        Ok((i, (next == ") ", wordset)))
     }
 }
 
@@ -305,7 +305,7 @@ fn parse_reactions(i: &str) -> IResult<&str, Reactions> {
             (i, HashSet::new())
         } else {
             let (i, imm) = parse_reaction("immune")(i)?;
-            let (i, _) = tag(")")(i)?;
+            let (i, _) = tag(") ")(i)?;
             (i, imm)
         };
         return Ok((
@@ -322,7 +322,7 @@ fn parse_reactions(i: &str) -> IResult<&str, Reactions> {
         (i, HashSet::new())
     } else {
         let (i, wk) = parse_reaction("weak")(i)?;
-        let (i, _) = tag(")")(i)?;
+        let (i, _) = tag(") ")(i)?;
         (i, wk)
     };
     Ok((
@@ -349,10 +349,11 @@ pub fn parse_army(i: &str) -> IResult<&str, Army> {
         parse_integer,
         tag(" hit points "),
     ))(i)?;
-    let (i, reactions) = parse_reactions(i)?;
+    let (i, opt_reactions) = opt(parse_reactions)(i)?;
+    let reactions = opt_reactions.unwrap_or_default();
 
     let (i, (_, damage, _, specialty, _, initiative)) = tuple((
-        tag(" with an attack that does "),
+        tag("with an attack that does "),
         parse_integer,
         tag(" "),
         recognize(many1(alphanumeric1)),
@@ -501,31 +502,31 @@ mod tests {
 
     #[test]
     fn test_parse_specialties() {
-        let s = "(weak to fire)";
+        let s = "(weak to fire) ";
         let (i, o) = parse_reactions(s).unwrap();
         assert_eq!(o.weaknesses, hs_from_arr(&["fire"]));
         assert_eq!(o.immunities, HashSet::new());
         assert_eq!(i, "");
 
-        let s = "(weak to fire, cold)";
+        let s = "(weak to fire, cold) ";
         let (i, o) = parse_reactions(s).unwrap();
         assert_eq!(o.weaknesses, hs_from_arr(&["fire", "cold"]));
         assert_eq!(o.immunities, HashSet::new());
         assert_eq!(i, "");
 
-        let s = "(weak to fire; immune to cold, slashing)";
+        let s = "(weak to fire; immune to cold, slashing) ";
         let (i, o) = parse_reactions(s).unwrap();
         assert_eq!(o.weaknesses, hs_from_arr(&["fire"]));
         assert_eq!(o.immunities, hs_from_arr(&["cold", "slashing"]));
         assert_eq!(i, "");
 
-        let s = "(immune to cold, slashing)";
+        let s = "(immune to cold, slashing) ";
         let (i, o) = parse_reactions(s).unwrap();
         assert_eq!(o.weaknesses, HashSet::new());
         assert_eq!(o.immunities, hs_from_arr(&["cold", "slashing"]));
         assert_eq!(i, "");
 
-        let s = "(immune to cold)";
+        let s = "(immune to cold) ";
         let (i, o) = parse_reactions(s).unwrap();
         assert_eq!(o.weaknesses, HashSet::new());
         assert_eq!(o.immunities, hs_from_arr(&["cold"]));
