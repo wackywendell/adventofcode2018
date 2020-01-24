@@ -487,6 +487,9 @@ fn main() -> Result<(), failure::Error> {
         }
     }
 
+    let (imm, inf) = battle.units();
+    println!("Battle complete. {} Immune, {} Infection remain", imm, inf);
+
     Ok(())
 }
 
