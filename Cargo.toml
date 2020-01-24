@@ -115,6 +115,9 @@ nom5 = { version = "5.1.0", package = "nom" }
 primes = "0.2.4"
 regex = "1"
 text_io = "0.1.7"
+log = "0.4.1"
+env_logger = "0.7.1"
+test-env-log = "0.2.2"
 
 [lib]
 name = "aoc"
