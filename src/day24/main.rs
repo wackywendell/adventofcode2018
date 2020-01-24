@@ -1,8 +1,12 @@
 #![warn(clippy::all)]
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 
 use clap::{App, Arg};
+use log::{debug, info};
 use nom5::{
     branch::alt,
     bytes::complete::tag,
@@ -33,6 +37,7 @@ pub enum Side {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Army {
+    name: String,
     side: Side,
     initiative: i64,
     units: i64,
@@ -61,6 +66,20 @@ pub struct Battle {
 }
 
 impl Battle {
+    // (Immune, Infection)
+    pub fn units(&self) -> (i64, i64) {
+        let (mut imm, mut inf) = (0, 0);
+        for a in self.armies.values() {
+            match a.side {
+                Side::Immune => imm += a.units,
+                Side::Infection => inf += a.units,
+                _ => panic!("Unknown side in army {:?}", a),
+            }
+        }
+
+        (imm, inf)
+    }
+
     fn target_order(&self) -> VecDeque<Index> {
         let mut queue: Vec<Index> = self.armies.iter().map(|(_, a)| a.index()).collect();
 
@@ -84,6 +103,154 @@ impl Battle {
         queue.sort_unstable_by_key(|&ix| std::cmp::Reverse(self[ix].initiative));
 
         VecDeque::from(queue)
+    }
+
+    fn potential_damage(&self, attack: Index, defend: Index) -> i64 {
+        let d = &self[defend];
+
+        if d.units == 0 {
+            return 0;
+        }
+
+        let a = &self[attack];
+        if d.reactions.immunities.contains(&a.specialty) {
+            return 0;
+        }
+
+        let damage = a.effective_power();
+
+        if d.reactions.weaknesses.contains(&a.specialty) {
+            return damage * 2;
+        }
+
+        damage
+    }
+
+    fn choose_target(&self, attacker: Index, ignore: &HashSet<Index>) -> Option<(i64, Index)> {
+        let att_army = &self.armies[&attacker];
+        if att_army.units == 0 {
+            // Dead
+            return None;
+        }
+
+        debug!(
+            "Choosing {} ({})",
+            attacker.value, self.armies[&attacker].name
+        );
+
+        // ((Damage, Effective Power, Initiative), Defender)
+        let mut best: Option<((i64, i64, i64), Index)> = None;
+        for (&ix, def) in &self.armies {
+            debug!("  {} ({}):", ix.value, self.armies[&ix].name);
+            // Same side
+            if att_army.side == self.armies[&ix].side {
+                debug!("    Same side.");
+                continue;
+            }
+
+            if ignore.contains(&ix) {
+                // Already attacked
+                debug!("    Already attacked.");
+                continue;
+            }
+
+            let damage = self.potential_damage(attacker, ix);
+            if damage == 0 {
+                debug!("    Damage zero.");
+                continue;
+            }
+
+            let new_key = (damage, def.effective_power(), def.initiative);
+
+            let (last_key, _) = match best {
+                None => {
+                    debug!("    Attacking!");
+                    best = Some((new_key, ix));
+                    continue;
+                }
+                Some(d) => d,
+            };
+
+            debug!(
+                "    Comparing: ({}, {}, {}) > ({}, {}, {}) = {}",
+                damage,
+                def.effective_power(),
+                def.initiative,
+                last_key.0,
+                last_key.1,
+                last_key.2,
+                new_key > last_key,
+            );
+            if new_key > last_key {
+                // debug!("      Replacing!");
+                best = Some((new_key, ix));
+            }
+        }
+
+        best.map(|((dmg, _, _), ix)| (dmg, ix))
+    }
+
+    // Returns total units killed
+    pub fn fight(&mut self) -> i64 {
+        let order = self.target_order();
+        let mut attacks: HashMap<Index, Index> = HashMap::new();
+        let mut attacked: HashSet<Index> = HashSet::new();
+
+        let mut deaths = 0;
+
+        for ix in order {
+            let (dmg, def) = match self.choose_target(ix, &attacked) {
+                None => {
+                    debug!("Target {}: Skipping", ix.value);
+                    continue;
+                }
+                Some(d) => d,
+            };
+
+            attacks.insert(ix, def);
+            debug!(
+                "Target {} ({}): Targeting {} ({}) for {} damage",
+                ix.value, self.armies[&ix].name, def.value, self.armies[&def].name, dmg
+            );
+            attacked.insert(def);
+        }
+
+        let order = self.attack_order();
+
+        for att in order {
+            let def = match attacks.get(&att) {
+                None => {
+                    debug!(
+                        "Attack from {} ({}): Skipping",
+                        att.value, self.armies[&att].name
+                    );
+                    continue;
+                }
+                Some(&d) => d,
+            };
+
+            let dmg = self.potential_damage(att, def);
+
+            let army = &self.armies[&def];
+            let units_killed = std::cmp::min(army.units, dmg / army.hp);
+
+            debug!(
+                "Attack from {} ({}) against {} ({}): Killed {} / {} units ({} damage / {} hp)",
+                att.value,
+                self.armies[&att].name,
+                def.value,
+                self.armies[&def].name,
+                units_killed,
+                army.units,
+                dmg,
+                army.hp
+            );
+            let army = self.armies.get_mut(&def).unwrap();
+            army.units -= units_killed;
+            deaths += units_killed;
+        }
+
+        deaths
     }
 }
 
@@ -196,6 +363,7 @@ pub fn parse_army(i: &str) -> IResult<&str, Army> {
     Ok((
         i,
         Army {
+            name: "Unknown".to_owned(),
             side: Side::Unknown,
             initiative,
             units,
@@ -240,6 +408,8 @@ where
     let mut battle: Battle = Default::default();
 
     let mut state = PossibleLine::Empty;
+    let mut immune_seen = 0;
+    let mut infection_seen = 0;
 
     for l in iter {
         let line = l.map_err(|e| e.into())?;
@@ -257,15 +427,19 @@ where
         };
 
         if state == PossibleLine::Infection {
+            infection_seen += 1;
+            army.name = format!("Infection {}", infection_seen);
             army.side = Side::Infection;
-            eprintln!(
+            debug!(
                 "Pushing infection: {:?} power: {}",
                 army,
                 army.effective_power()
             );
         } else if state == PossibleLine::Immune {
+            immune_seen += 1;
+            army.name = format!("Immune {}", immune_seen);
             army.side = Side::Immune;
-            eprintln!(
+            debug!(
                 "Pushing immune: {:?} power: {}",
                 army,
                 army.effective_power()
@@ -281,6 +455,8 @@ where
 }
 
 fn main() -> Result<(), failure::Error> {
+    env_logger::init();
+
     let matches = App::new("Day 24")
         .arg(
             Arg::with_name("input")
@@ -293,13 +469,30 @@ fn main() -> Result<(), failure::Error> {
 
     let input_path = matches.value_of("INPUT").unwrap_or("inputs/day24.txt");
 
-    eprintln!("Using input {}", input_path);
+    debug!("Using input {}", input_path);
+    let file = File::open(input_path)?;
+    let buf_reader = BufReader::new(file);
+    let mut battle = parse_lines(buf_reader.lines())?;
+
+    loop {
+        let killed = battle.fight();
+        let (imm, inf) = battle.units();
+        info!(
+            "{} Units Killed. {} Immune, {} Infection remain",
+            killed, imm, inf
+        );
+        if killed == 0 {
+            break;
+        }
+    }
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use test_env_log::test;
+
     use super::*;
 
     fn hs_from_arr(strings: &[&str]) -> HashSet<String> {
@@ -363,6 +556,7 @@ mod tests {
         assert_eq!(
             army,
             Army {
+                name: "Unknown".to_owned(),
                 side: Side::Unknown,
                 initiative: 2,
                 damage: 4507,
@@ -373,6 +567,30 @@ mod tests {
                 },
                 specialty: "fire".to_owned(),
                 units: 17,
+            }
+        );
+
+        let o = parse_line("10 units each with 20 hit points with an attack that does 40 fire damage at initiative 1");
+        let army = if let Ok(PossibleLine::Army(army)) = o {
+            army
+        } else {
+            panic!("Failed to unwrap army: {:?}", o);
+        };
+
+        assert_eq!(
+            army,
+            Army {
+                name: "Unknown".to_owned(),
+                side: Side::Unknown,
+                initiative: 1,
+                damage: 40,
+                hp: 20,
+                reactions: Reactions {
+                    immunities: hs_from_arr(&[]),
+                    weaknesses: hs_from_arr(&[]),
+                },
+                specialty: "fire".to_owned(),
+                units: 10,
             }
         );
     }
@@ -389,6 +607,7 @@ mod tests {
 
         // 17 units each with 5390 hit points (weak to radiation, bludgeoning) with an attack that does 4507 fire damage at initiative 2
         let army1 = Army {
+            name: "Immune 1".to_owned(),
             side: Side::Immune,
             initiative: 2,
             damage: 4507,
@@ -402,6 +621,7 @@ mod tests {
         };
         // 989 units each with 1274 hit points (immune to fire; weak to bludgeoning, slashing) with an attack that does 25 slashing damage at initiative 3
         let army2 = Army {
+            name: "Immune 2".to_owned(),
             side: Side::Immune,
             initiative: 3,
             damage: 25,
@@ -416,6 +636,7 @@ mod tests {
 
         // 801 units each with 4706 hit points (weak to radiation) with an attack that does 116 bludgeoning damage at initiative 1
         let army3 = Army {
+            name: "Infection 1".to_owned(),
             side: Side::Infection,
             initiative: 1,
             damage: 116,
@@ -429,6 +650,7 @@ mod tests {
         };
         // 4485 units each with 2961 hit points (immune to radiation; weak to fire, cold) with an attack that does 12 slashing damage at initiative 4
         let army4 = Army {
+            name: "Infection 2".to_owned(),
             side: Side::Infection,
             initiative: 4,
             damage: 12,
@@ -465,5 +687,61 @@ mod tests {
 
         let order: Vec<i64> = battle.attack_order().iter().map(|i| i.value).collect();
         assert_eq!(order, vec![4, 3, 2, 1]);
+    }
+
+    #[allow(clippy::cognitive_complexity)]
+    #[test]
+    fn test_fight() {
+        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
+        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
+        let mut battle = maybe_battle.unwrap();
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 905);
+        assert_eq!(battle[Index { value: 1 }].units, 797);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 761);
+        assert_eq!(battle[Index { value: 1 }].units, 793);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 618);
+        assert_eq!(battle[Index { value: 1 }].units, 789);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 475);
+        assert_eq!(battle[Index { value: 1 }].units, 786);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 333);
+        assert_eq!(battle[Index { value: 1 }].units, 784);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 191);
+        assert_eq!(battle[Index { value: 1 }].units, 783);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 49);
+        assert_eq!(battle[Index { value: 1 }].units, 782);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 0);
+        assert_eq!(battle[Index { value: 1 }].units, 782);
+        assert_eq!(battle[Index { value: 4 }].units, 4434);
     }
 }
