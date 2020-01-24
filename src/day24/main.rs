@@ -415,7 +415,10 @@ where
     E: Into<failure::Error>,
     T: IntoIterator<Item = Result<S, E>>,
 {
-    let mut battle: Battle = Default::default();
+    let mut battle: Battle = Battle {
+        armies: Default::default(),
+        boost,
+    };
 
     let mut state = PossibleLine::Empty;
     let mut immune_seen = 0;
@@ -756,5 +759,10 @@ mod tests {
         assert_eq!(battle[Index { value: 3 }].units, 0);
         assert_eq!(battle[Index { value: 1 }].units, 782);
         assert_eq!(battle[Index { value: 4 }].units, 4434);
+    }
+
+    #[test]
+    fn test_boost_fight() {
+        unimplemented!()
     }
 }
