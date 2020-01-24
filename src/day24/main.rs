@@ -85,9 +85,9 @@ impl Battle {
 
         queue.sort_unstable_by_key(|&ix| (-self[ix].effective_power(), -self[ix].initiative));
 
-        println!("Target Order:");
+        debug!("Target Order:");
         for &ix in &queue {
-            println!(
+            debug!(
                 "  Index: {}, power: {}",
                 ix.value,
                 self[ix].effective_power()
@@ -602,7 +602,7 @@ mod tests {
         let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok));
         let battle = maybe_battle.unwrap();
 
-        eprintln!("Battle: {:?}", battle);
+        info!("Battle: {:?}", battle);
 
         assert_eq!(battle.armies.len(), 4);
 
