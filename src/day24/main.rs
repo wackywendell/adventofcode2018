@@ -261,6 +261,28 @@ impl Battle {
 
         deaths
     }
+
+    pub fn finish(&mut self) -> Side {
+        loop {
+            let killed = self.fight();
+            if killed == 0 {
+                break;
+            }
+        }
+
+        let winner = match self.units() {
+            (0, 0) => Side::Unknown,
+            (0, _) => Side::Infection,
+            (_, 0) => Side::Immune,
+            _ => Side::Unknown,
+        };
+
+        info!(
+            "Battle finished with boost {}. Winner: {:?}",
+            self.boost, winner
+        );
+        winner
+    }
 }
 
 impl std::ops::Index<Index> for Battle {
@@ -611,11 +633,14 @@ mod tests {
         );
     }
 
+    fn get_test_battle(input: &str, boost: i64) -> Result<Battle, failure::Error> {
+        let lines: Vec<&str> = input.split('\n').collect();
+        parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), boost)
+    }
+
     #[test]
     fn test_parse_lines() {
-        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
-        let battle = maybe_battle.unwrap();
+        let battle = get_test_battle(TEST_INPUT, 0).unwrap();
 
         info!("Battle: {:?}", battle);
 
@@ -687,9 +712,7 @@ mod tests {
 
     #[test]
     fn test_target_order() {
-        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
-        let battle = maybe_battle.unwrap();
+        let battle = get_test_battle(TEST_INPUT, 0).unwrap();
 
         let order: Vec<i64> = battle.target_order().iter().map(|i| i.value).collect();
         assert_eq!(order, vec![1, 2, 4, 3]);
@@ -697,9 +720,7 @@ mod tests {
 
     #[test]
     fn test_attack_order() {
-        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
-        let battle = maybe_battle.unwrap();
+        let battle = get_test_battle(TEST_INPUT, 0).unwrap();
 
         let order: Vec<i64> = battle.attack_order().iter().map(|i| i.value).collect();
         assert_eq!(order, vec![4, 3, 2, 1]);
@@ -708,9 +729,7 @@ mod tests {
     #[allow(clippy::cognitive_complexity)]
     #[test]
     fn test_fight() {
-        let lines: Vec<&str> = TEST_INPUT.split('\n').collect();
-        let maybe_battle = parse_lines::<_, failure::Error, _>(lines.iter().map(Ok), 0);
-        let mut battle = maybe_battle.unwrap();
+        let mut battle = get_test_battle(TEST_INPUT, 0).unwrap();
 
         battle.fight();
         assert_eq!(battle[Index { value: 2 }].units, 0);
@@ -763,6 +782,101 @@ mod tests {
 
     #[test]
     fn test_boost_fight() {
-        unimplemented!()
+        let mut battle = get_test_battle(TEST_INPUT, 1570).unwrap();
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 8);
+        assert_eq!(battle[Index { value: 3 }].units, 905);
+        assert_eq!(battle[Index { value: 1 }].units, 466);
+        assert_eq!(battle[Index { value: 4 }].units, 4453);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 876);
+        assert_eq!(battle[Index { value: 1 }].units, 160);
+        assert_eq!(battle[Index { value: 4 }].units, 4453);
+
+        while battle[Index { value: 3 }].units > 64 {
+            battle.fight();
+        }
+
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 64);
+        assert_eq!(battle[Index { value: 1 }].units, 19);
+        assert_eq!(battle[Index { value: 4 }].units, 214);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 60);
+        assert_eq!(battle[Index { value: 1 }].units, 19);
+        assert_eq!(battle[Index { value: 4 }].units, 182);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 60);
+        assert_eq!(battle[Index { value: 1 }].units, 0);
+        assert_eq!(battle[Index { value: 4 }].units, 182);
+
+        while battle[Index { value: 3 }].units > 51 || battle[Index { value: 4 }].units > 40 {
+            battle.fight();
+        }
+        // After a few more fights...
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 51);
+        assert_eq!(battle[Index { value: 1 }].units, 0);
+        assert_eq!(battle[Index { value: 4 }].units, 40);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 51);
+        assert_eq!(battle[Index { value: 1 }].units, 0);
+        assert_eq!(battle[Index { value: 4 }].units, 13);
+
+        battle.fight();
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 51);
+        assert_eq!(battle[Index { value: 1 }].units, 0);
+        assert_eq!(battle[Index { value: 4 }].units, 0);
+
+        assert_eq!(battle.fight(), 0);
+    }
+
+    #[test]
+    fn test_battle_finish() {
+        let mut battle = get_test_battle(TEST_INPUT, 1570).unwrap();
+        assert_eq!(battle.finish(), Side::Immune);
+
+        assert_eq!(battle[Index { value: 2 }].units, 0);
+        assert_eq!(battle[Index { value: 3 }].units, 51);
+        assert_eq!(battle[Index { value: 1 }].units, 0);
+        assert_eq!(battle[Index { value: 4 }].units, 0);
+    }
+
+    #[test]
+    fn test_boost_finder() {
+        let original_battle = get_test_battle(TEST_INPUT, 0).unwrap();
+        let mut battle: Battle;
+
+        let mut boost = 0;
+        loop {
+            assert!(boost < 1600);
+            battle = original_battle.clone();
+            battle.boost = boost;
+
+            let winner = battle.finish();
+            for (ix, a) in &battle.armies {
+                println!("  Army {} ({}): {} units", ix.value, a.name, a.units);
+            }
+
+            if winner == Side::Immune {
+                break;
+            }
+            boost += 1;
+        }
+
+        let (imm, inf) = battle.units();
+        assert_eq!(boost, 1570);
+        assert_eq!(imm, 51);
+        assert_eq!(inf, 0);
     }
 }
