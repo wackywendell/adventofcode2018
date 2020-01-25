@@ -1,10 +1,16 @@
 #![warn(clippy::all)]
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::iter::FromIterator;
 
 use clap::{App, Arg};
+use log::debug;
 use text_io::try_scan;
+
+use aoc::parse::parse_lines_err;
 
 pub type Val = i64;
 
@@ -54,22 +60,27 @@ impl Constellations {
         }
 
         let id = self.points.len();
+        debug!("Adding point {}: {:?}", id, v);
         if my_constellations.is_empty() {
+            debug!("  New constellation {} with point {}", id, id);
             self.points.push((id, v));
             self.constellations.insert(id, vec![id]);
             return;
         }
 
-        let mn: usize = *my_constellations.iter().min_by_key(|&c| c).unwrap();
+        my_constellations.sort();
+        my_constellations.dedup();
 
-        for c in my_constellations {
-            if c == mn {
-                continue;
-            }
+        let mn: usize = my_constellations[0];
+        debug!("  Joining constellation {}", mn);
+
+        for c in &my_constellations[1..] {
+            debug!("  Merging constellation {} -> constellation {}", c, mn);
             // Merge constellations
             let mut merging = self.constellations.remove(&c).unwrap();
             // Update each point in the main vec
             for &vid in &merging {
+                debug!("    Merging point {} -> constellation {}", vid, mn);
                 let (_, vc) = self.points[vid];
                 self.points[vid] = (mn, vc);
             }
@@ -79,6 +90,7 @@ impl Constellations {
         }
 
         // Add current point to the constellation
+        debug!("  Adding point {} -> constellation {}", id, mn);
         let new_c = self.constellations.get_mut(&mn).unwrap();
         new_c.push(id);
         new_c.sort();
@@ -107,6 +119,8 @@ impl FromIterator<Vec4> for Constellations {
 }
 
 fn main() -> Result<(), failure::Error> {
+    env_logger::init();
+
     let matches = App::new("Day 25")
         .arg(
             Arg::with_name("input")
@@ -119,7 +133,13 @@ fn main() -> Result<(), failure::Error> {
 
     let input_path = matches.value_of("INPUT").unwrap_or("inputs/day25.txt");
 
-    eprintln!("Using input {}", input_path);
+    debug!("Using input {}", input_path);
+    let file = File::open(input_path)?;
+    let buf_reader = BufReader::new(file);
+    let points = parse_lines_err(Vec4::parse_line, buf_reader.lines())?;
+    let c = Constellations::from_iter(points);
+
+    println!("Found {} constellations", c.constellations.len());
 
     Ok(())
 }
