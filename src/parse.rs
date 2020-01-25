@@ -1,5 +1,6 @@
 #![warn(clippy::all)]
 
+use log::{debug, warn};
 use nom::{alt, digit, map_res, opt, pair, recognize, tag};
 
 use std::str::FromStr;
@@ -50,16 +51,26 @@ where
     F: Fn(&str) -> Result<Item, E1>,
     S: AsRef<str>,
     T: IntoIterator<Item = Result<S, E2>>,
+    Item: std::fmt::Debug,
 {
     iter.into_iter()
         .filter_map(|rl| match rl {
-            Err(e) => Some(Err(e.into())),
+            Err(e) => {
+                let e = e.into();
+                warn!("  Error getting line: {}", e);
+                Some(Err(e))
+            }
             Ok(l) => {
                 let trimmed = l.as_ref().trim();
                 if trimmed.is_empty() {
                     None
                 } else {
-                    Some(f(trimmed).map_err(|e| e.into()))
+                    let fd = f(trimmed).map_err(|e| e.into());
+                    match fd {
+                        Ok(ref i) => debug!("  Parsed line '{}' -> {:?}", trimmed, i),
+                        Err(ref e) => warn!("  Error parsing line '{}': {}", trimmed, e),
+                    }
+                    Some(fd)
                 }
             }
         })
@@ -72,8 +83,19 @@ where
     F: Fn(&str) -> Result<Item, E>,
     S: AsRef<str>,
     T: IntoIterator<Item = S>,
+    Item: std::fmt::Debug,
 {
     parse_lines_err::<_, failure::Error, _, _, _, _>(f, iter.into_iter().map(Ok))
+}
+
+pub fn parse_str<E, F, S, Item>(f: F, s: S) -> Result<Vec<Item>, failure::Error>
+where
+    E: Into<failure::Error>,
+    F: Fn(&str) -> Result<Item, E>,
+    S: AsRef<str>,
+    Item: std::fmt::Debug,
+{
+    parse_lines(f, s.as_ref().split('\n'))
 }
 
 #[cfg(test)]
