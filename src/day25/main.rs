@@ -164,4 +164,69 @@ mod tests {
             )
         );
     }
+
+    const MORE_INPUTS: &[(usize, &str)] = &[
+        (
+            4,
+            r#"
+                -1,2,2,0
+                0,0,2,-2
+                0,0,0,-2
+                -1,2,0,0
+                -2,-2,-2,2
+                3,0,2,-1
+                -1,3,2,2
+                -1,0,-1,0
+                0,2,1,-2
+                3,0,0,0
+        "#,
+        ),
+        (
+            3,
+            r#"
+                1,-1,0,1
+                2,0,-1,0
+                3,2,-1,0
+                0,0,3,1
+                0,0,-1,-1
+                2,3,-2,0
+                -2,2,0,0
+                2,-2,0,-1
+                1,-1,0,-1
+                3,2,0,2
+            "#,
+        ),
+        (
+            8,
+            r#"
+                1,-1,-1,-2
+                -2,-2,0,1
+                0,2,1,3
+                -2,3,-2,1
+                0,2,3,-2
+                -1,-1,1,-2
+                0,-2,-1,0
+                -2,2,3,-1
+                1,2,2,0
+                -1,-2,0,-2
+            "#,
+        ),
+    ];
+
+    #[test]
+    fn test_constellation_creation() {
+        let pts = parse_str(Vec4::parse_line, INPUT1).unwrap();
+        let mut c = Constellations::from_iter(pts);
+
+        assert_eq!(c.constellations.len(), 2);
+
+        c.add(Vec4(6, 0, 0, 0));
+        assert_eq!(c.constellations.len(), 1);
+
+        for &(n, s) in MORE_INPUTS {
+            let pts = parse_str(Vec4::parse_line, s).unwrap();
+            let c = Constellations::from_iter(pts);
+            assert_eq!(c.constellations.len(), n);
+        }
+    }
 }
