@@ -507,7 +507,8 @@ fn main() -> Result<(), failure::Error> {
     debug!("Using input {}", input_path);
     let file = File::open(input_path)?;
     let buf_reader = BufReader::new(file);
-    let mut battle = parse_lines(buf_reader.lines(), 0)?;
+    let original_battle = parse_lines(buf_reader.lines(), 0)?;
+    let mut battle = original_battle.clone();
 
     loop {
         let killed = battle.fight();
@@ -523,6 +524,21 @@ fn main() -> Result<(), failure::Error> {
 
     let (imm, inf) = battle.units();
     println!("Battle complete. {} Immune, {} Infection remain", imm, inf);
+
+    for boost in 1.. {
+        battle = original_battle.clone();
+        battle.boost = boost;
+        let side = battle.finish();
+        let (imm, inf) = battle.units();
+        info!(
+            "Finished boost {} with {} immune, {} inf units",
+            boost, imm, inf
+        );
+        if side == Side::Immune {
+            println!("Immune won with boost {}, and {} units", boost, imm);
+            break;
+        }
+    }
 
     Ok(())
 }
