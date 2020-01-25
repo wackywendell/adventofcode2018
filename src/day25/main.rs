@@ -1,19 +1,21 @@
 #![warn(clippy::all)]
 
-use clap::{App, Arg};
+use std::collections::HashMap;
+use std::iter::FromIterator;
 
+use clap::{App, Arg};
 use text_io::try_scan;
 
 pub type Val = i64;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Vec(Val, Val, Val, Val);
+pub struct Vec4(Val, Val, Val, Val);
 
-impl std::ops::Sub for Vec {
+impl std::ops::Sub for Vec4 {
     type Output = Self;
 
     fn sub(self: Self, rhs: Self) -> Self {
-        Vec(
+        Vec4(
             self.0 - rhs.0,
             self.1 - rhs.1,
             self.2 - rhs.2,
@@ -22,15 +24,85 @@ impl std::ops::Sub for Vec {
     }
 }
 
-impl Vec {
+impl Vec4 {
     pub fn manhattan(self) -> Val {
         self.0.abs() + self.1.abs() + self.2.abs() + self.3.abs()
     }
 
     pub fn parse_line(line: &str) -> Result<Self, failure::Error> {
         let (x, y, z, t): (i64, i64, i64, i64);
-        try_scan!(line.bytes() => "({},{},{},{})", x,y,z,t);
-        Ok(Vec(x, y, z, t))
+        try_scan!(line.bytes() => "{},{},{},{}", x,y,z,t);
+        Ok(Vec4(x, y, z, t))
+    }
+}
+
+pub struct Constellations {
+    // (constellation id, point)
+    points: Vec<(usize, Vec4)>,
+    // Maps constellation id -> Vec<Point id>
+    constellations: HashMap<usize, Vec<usize>>,
+}
+
+impl Constellations {
+    pub fn add(&mut self, v: Vec4) {
+        let mut my_constellations: Vec<usize> = Vec::new();
+        for &(c, v2) in &self.points {
+            let d = (v2 - v).manhattan();
+            if d <= 3 {
+                my_constellations.push(c);
+            }
+        }
+
+        let id = self.points.len();
+        if my_constellations.is_empty() {
+            self.points.push((id, v));
+            self.constellations.insert(id, vec![id]);
+            return;
+        }
+
+        let mn: usize = *my_constellations.iter().min_by_key(|&c| c).unwrap();
+
+        for c in my_constellations {
+            if c == mn {
+                continue;
+            }
+            // Merge constellations
+            let mut merging = self.constellations.remove(&c).unwrap();
+            // Update each point in the main vec
+            for &vid in &merging {
+                let (_, vc) = self.points[vid];
+                self.points[vid] = (mn, vc);
+            }
+            // Merge maps in the main hashmap
+            let new_c = self.constellations.get_mut(&mn).unwrap();
+            new_c.append(&mut merging);
+        }
+
+        // Add current point to the constellation
+        let new_c = self.constellations.get_mut(&mn).unwrap();
+        new_c.push(id);
+        new_c.sort();
+        // Push point onto the main stack
+        self.points.push((mn, v));
+    }
+}
+
+impl FromIterator<Vec4> for Constellations {
+    fn from_iter<T: IntoIterator<Item = Vec4>>(iter: T) -> Self {
+        let it = iter.into_iter();
+        let (mn, mx) = it.size_hint();
+        let sz = if let Some(m) = mx { m } else { mn };
+
+        let mut constellations = Constellations {
+            points: Vec::with_capacity(sz),
+            constellations: HashMap::new(),
+        };
+
+        for v in it {
+            constellations.add(v)
+        }
+
+        constellations
     }
 }
 
@@ -50,4 +122,46 @@ fn main() -> Result<(), failure::Error> {
     eprintln!("Using input {}", input_path);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use test_env_log::test;
+
+    use super::*;
+
+    use aoc::parse::parse_str;
+
+    const INPUT1: &str = r#"
+        0,0,0,0
+        3,0,0,0
+        0,3,0,0
+        0,0,3,0
+        0,0,0,3
+        0,0,0,6
+        9,0,0,0
+        12,0,0,0
+    "#;
+
+    #[test]
+    fn test_parse() {
+        let pt = Vec4::parse_line("10,-20,30,-44").unwrap();
+        assert_eq!(pt, Vec4(10, -20, 30, -44));
+
+        let pts = parse_str(Vec4::parse_line, INPUT1).unwrap();
+        assert_eq!(pts.len(), 8);
+        assert_eq!(
+            pts,
+            vec!(
+                Vec4(0, 0, 0, 0),
+                Vec4(3, 0, 0, 0),
+                Vec4(0, 3, 0, 0),
+                Vec4(0, 0, 3, 0),
+                Vec4(0, 0, 0, 3),
+                Vec4(0, 0, 0, 6),
+                Vec4(9, 0, 0, 0),
+                Vec4(12, 0, 0, 0),
+            )
+        );
+    }
 }
