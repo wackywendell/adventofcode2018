@@ -42,6 +42,40 @@ where
     )
 }
 
+// Parse a series of items from iterator.
+pub fn parse_lines_err<E1, E2, S, T, F, Item>(f: F, iter: T) -> Result<Vec<Item>, failure::Error>
+where
+    E1: Into<failure::Error>,
+    E2: Into<failure::Error>,
+    F: Fn(&str) -> Result<Item, E1>,
+    S: AsRef<str>,
+    T: IntoIterator<Item = Result<S, E2>>,
+{
+    iter.into_iter()
+        .filter_map(|rl| match rl {
+            Err(e) => Some(Err(e.into())),
+            Ok(l) => {
+                let trimmed = l.as_ref().trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(f(trimmed).map_err(|e| e.into()))
+                }
+            }
+        })
+        .collect()
+}
+
+pub fn parse_lines<E, S, T, F, Item>(f: F, iter: T) -> Result<Vec<Item>, failure::Error>
+where
+    E: Into<failure::Error>,
+    F: Fn(&str) -> Result<Item, E>,
+    S: AsRef<str>,
+    T: IntoIterator<Item = S>,
+{
+    parse_lines_err::<_, failure::Error, _, _, _, _>(f, iter.into_iter().map(Ok))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
