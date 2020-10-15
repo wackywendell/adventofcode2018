@@ -53,13 +53,13 @@ impl FromStr for Point {
             .ok_or_else(|| ParseError::from_line(&s))?
             .as_str()
             .parse::<i64>()
-            .or_else(|m| Err(ParseError::from_part(&m, &s)))?;
+            .map_err(|m| ParseError::from_part(&m, &s))?;
         let y = c
             .get(2)
             .ok_or_else(|| ParseError::from_line(&s))?
             .as_str()
             .parse::<i64>()
-            .or_else(|m| Err(ParseError::from_part(&m, &s)))?;
+            .map_err(|m| ParseError::from_part(&m, &s))?;
 
         Ok(Point(x, y))
     }

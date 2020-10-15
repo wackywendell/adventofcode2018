@@ -94,7 +94,12 @@ impl Graph {
 
         while !ready.is_empty() {
             // Keep it reverse sorted, so we can pop the earliest-by-alphabetical element
-            ready.sort_by(|n1, n2| n2.cmp(n1));
+            #[allow(clippy::unnecessary_sort_by)]
+            // This lint wants us to use sort_by_key (or sort_unstable_by_key),
+            // but that doesn't work with references; its a lifetime/HKT thing,
+            // see https://github.com/rust-lang/rust/issues/34162
+            ready.sort_unstable_by(|n1, n2| n2.cmp(n1));
+            // ready.sort_unstable_by_key(|n| std::cmp::Reverse(n));
             let n = ready.pop().unwrap();
             finished.push(n.clone());
             deps.parents.remove(&n);
@@ -142,7 +147,12 @@ impl Graph {
 
         while !ready.is_empty() || !processing.is_empty() {
             // Keep it reverse sorted, so we can pop the earliest-by-alphabetical element
-            ready.sort_by(|n1, n2| n2.cmp(n1));
+            #[allow(clippy::unnecessary_sort_by)]
+            // This lint wants us to use sort_by_key (or sort_unstable_by_key),
+            // but that doesn't work with references; its a lifetime/HKT thing,
+            // see https://github.com/rust-lang/rust/issues/34162
+            ready.sort_unstable_by(|n1, n2| n2.cmp(n1));
+
             if let Some(n) = ready.pop() {
                 // We have a job ready
                 processing.push((Graph::time(&n) + base_time + t, n));
@@ -153,7 +163,6 @@ impl Graph {
 
             // All workers are full. Advance time until the first one finishes.
             // Sort so that the earliest completed, earliest alphabetically is last.
-            //processing.sort_unstable_by(|(t1, n1), (t2, n2)| (t2, n1).cmp(&(t1, n2)));
             processing.sort_unstable_by_key(|(t1, n1)| (-t1, n1.clone()));
             t = processing.last().unwrap().0;
             while !processing.is_empty() && processing.last().unwrap().0 == t {

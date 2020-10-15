@@ -203,15 +203,7 @@ impl Battle {
             return Some((character.location, character.location, false));
         }
 
-        choices.sort();
-        // println!("Choices:");
-        // for (d, e, s) in &choices {
-        //     println!("{} - {:?} - {:?}", d, e, s);
-        // }
-
-        // if let Some((d, e, t, s)) = choices.first() {
-        //     println!("Choosing {} - {:?} - {:?} - {:?}", d, e, t, s);
-        // }
+        choices.sort_unstable();
 
         choices.first().map(|&(_, _, t, s)| (s, t, true))
     }

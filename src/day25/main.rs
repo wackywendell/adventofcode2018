@@ -20,7 +20,7 @@ pub struct Vec4(Val, Val, Val, Val);
 impl std::ops::Sub for Vec4 {
     type Output = Self;
 
-    fn sub(self: Self, rhs: Self) -> Self {
+    fn sub(self, rhs: Self) -> Self {
         Vec4(
             self.0 - rhs.0,
             self.1 - rhs.1,
@@ -68,7 +68,7 @@ impl Constellations {
             return;
         }
 
-        my_constellations.sort();
+        my_constellations.sort_unstable();
         my_constellations.dedup();
 
         let mn: usize = my_constellations[0];
@@ -93,7 +93,7 @@ impl Constellations {
         debug!("  Adding point {} -> constellation {}", id, mn);
         let new_c = self.constellations.get_mut(&mn).unwrap();
         new_c.push(id);
-        new_c.sort();
+        new_c.sort_unstable();
         // Push point onto the main stack
         self.points.push((mn, v));
     }
